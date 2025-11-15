@@ -202,4 +202,46 @@ describe('orchestrator job model', () => {
       expect(allJobs).toHaveLength(2);
     });
   });
+
+  describe('isWorktreeInUse', () => {
+    it('returns true when worktree is used by existing jobs', () => {
+      const worktreePath = '/tmp/worktree-shared';
+      jobModule.createJob(createJobPayload({ worktree_path: worktreePath, branch_name: 'feature/shared' }));
+      jobModule.createJob(createJobPayload({ worktree_path: worktreePath, branch_name: 'feature/shared' }));
+
+      const inUse = jobModule.isWorktreeInUse(worktreePath);
+      expect(inUse).toBe(true);
+    });
+
+    it('returns false when worktree is not used by any jobs', () => {
+      const inUse = jobModule.isWorktreeInUse('/tmp/worktree-nonexistent');
+      expect(inUse).toBe(false);
+    });
+
+    it('excludes specified job IDs from the check', () => {
+      const worktreePath = '/tmp/worktree-single';
+      const job = jobModule.createJob(createJobPayload({ worktree_path: worktreePath, branch_name: 'feature/single' }));
+
+      const inUseWithExclusion = jobModule.isWorktreeInUse(worktreePath, [job.id]);
+      expect(inUseWithExclusion).toBe(false);
+    });
+
+    it('returns true when other jobs use the worktree even with exclusions', () => {
+      const worktreePath = '/tmp/worktree-multi';
+      const job1 = jobModule.createJob(createJobPayload({ worktree_path: worktreePath, branch_name: 'feature/multi' }));
+      const job2 = jobModule.createJob(createJobPayload({ worktree_path: worktreePath, branch_name: 'feature/multi' }));
+
+      const inUse = jobModule.isWorktreeInUse(worktreePath, [job1.id]);
+      expect(inUse).toBe(true);
+    });
+
+    it('excludes multiple job IDs correctly', () => {
+      const worktreePath = '/tmp/worktree-batch';
+      const job1 = jobModule.createJob(createJobPayload({ worktree_path: worktreePath, branch_name: 'feature/batch' }));
+      const job2 = jobModule.createJob(createJobPayload({ worktree_path: worktreePath, branch_name: 'feature/batch' }));
+
+      const inUse = jobModule.isWorktreeInUse(worktreePath, [job1.id, job2.id]);
+      expect(inUse).toBe(false);
+    });
+  });
 });

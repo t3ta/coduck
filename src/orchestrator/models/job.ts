@@ -290,3 +290,15 @@ export const deleteJobs = (filter: { statuses?: JobStatus[]; maxAgeDays?: number
 
   return transaction(statuses, cutoffIso);
 };
+
+export const isWorktreeInUse = (worktreePath: string, excludeJobIds: string[] = []): boolean => {
+  const db = getDb();
+  const placeholders = excludeJobIds.map(() => '?').join(', ');
+  const whereClause = excludeJobIds.length
+    ? `WHERE worktree_path = ? AND id NOT IN (${placeholders})`
+    : 'WHERE worktree_path = ?';
+  const stmt = db.prepare(`SELECT COUNT(*) as count FROM jobs ${whereClause}`);
+  const params = excludeJobIds.length ? [worktreePath, ...excludeJobIds] : [worktreePath];
+  const result = stmt.get(...params) as { count: number };
+  return result.count > 0;
+};
