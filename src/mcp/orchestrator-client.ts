@@ -67,11 +67,14 @@ export interface EnqueueCodexJobArgs {
   context_files: string[];
   notes?: string;
   base_ref?: string;
+  feature_id?: string;
+  feature_part?: string;
 }
 
 export interface ListJobsFilter {
   status?: JobStatus;
   worker_type?: string;
+  feature_id?: string;
 }
 
 export interface CleanupJobsOptions {
@@ -125,6 +128,8 @@ export class OrchestratorClient {
       worktree_path: metadata.worktreePath,
       worker_type: WORKER_TYPE_CODEX,
       spec_json: specPayload,
+      feature_id: args.feature_id,
+      feature_part: args.feature_part,
     };
 
     return this.request<Job>('/jobs', {
@@ -137,6 +142,7 @@ export class OrchestratorClient {
     const query = toQueryParams(filter ? {
       status: filter.status,
       worker_type: filter.worker_type,
+      feature_id: filter.feature_id,
     } : undefined);
     return this.request<Job[]>('/jobs', undefined, query ?? undefined);
   }

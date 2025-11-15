@@ -10,6 +10,8 @@ const createJobResponse = (overrides: Partial<Job> = {}): Job => ({
   worktree_path: '/worktrees/sample',
   worker_type: 'codex',
   status: 'pending',
+  feature_id: null,
+  feature_part: null,
   spec_json: {
     goal: 'Implement feature',
     context_files: ['src/index.ts'],
@@ -126,5 +128,103 @@ describe('OrchestratorClient', () => {
     expect(body.result_summary).toMatchObject({ message: 'ok' });
     expect(body.conversation_id).toBe('conv-7');
     expect(result.status).toBe('done');
+  });
+
+  describe('enqueueCodexJob with feature metadata', () => {
+    it('sends feature_id and feature_part when provided', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify(createJobResponse({ feature_id: 'analytics', feature_part: 'tracking' })),
+      });
+
+      const client = new OrchestratorClient({
+        baseUrl: 'http://localhost:5555',
+        repoUrl: 'https://example.com/repo.git',
+        worktreeBaseDir: '/worktrees',
+        fetchImpl: fetchMock,
+      });
+
+      const job = await client.enqueueCodexJob({
+        goal: 'Add analytics tracking',
+        context_files: ['src/analytics.ts'],
+        feature_id: 'analytics',
+        feature_part: 'tracking',
+      });
+
+      expect(job.feature_id).toBe('analytics');
+      expect(job.feature_part).toBe('tracking');
+
+      const [, init] = fetchMock.mock.calls[0];
+      const body = JSON.parse((init?.body as string) ?? '{}');
+      expect(body.feature_id).toBe('analytics');
+      expect(body.feature_part).toBe('tracking');
+    });
+
+    it('works without feature metadata', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(createJobResponse()),
+      });
+
+      const client = new OrchestratorClient({
+        baseUrl: 'http://localhost:5555',
+        repoUrl: 'https://example.com/repo.git',
+        worktreeBaseDir: '/worktrees',
+        fetchImpl: fetchMock,
+      });
+
+      const job = await client.enqueueCodexJob({
+        goal: 'Regular task',
+        context_files: ['src/file.ts'],
+      });
+
+      expect(job.feature_id).toBeNull();
+      expect(job.feature_part).toBeNull();
+    });
+  });
+
+  describe('listJobs with feature_id filter', () => {
+    it('adds feature_id to query params when provided', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify([createJobResponse({ feature_id: 'search' })]),
+      });
+
+      const client = new OrchestratorClient({
+        baseUrl: 'http://localhost:5555',
+        repoUrl: 'https://example.com/repo.git',
+        worktreeBaseDir: '/worktrees',
+        fetchImpl: fetchMock,
+      });
+
+      await client.listJobs({ feature_id: 'search' });
+
+      const [url] = fetchMock.mock.calls[0];
+      expect((url as URL).searchParams.get('feature_id')).toBe('search');
+    });
+
+    it('omits feature_id when no filter is provided', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify([createJobResponse()]),
+      });
+
+      const client = new OrchestratorClient({
+        baseUrl: 'http://localhost:5555',
+        repoUrl: 'https://example.com/repo.git',
+        worktreeBaseDir: '/worktrees',
+        fetchImpl: fetchMock,
+      });
+
+      await client.listJobs();
+
+      const [url] = fetchMock.mock.calls[0];
+      expect((url as URL).searchParams.has('feature_id')).toBe(false);
+    });
   });
 });

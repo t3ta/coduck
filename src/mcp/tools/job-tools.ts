@@ -24,11 +24,14 @@ const enqueueCodexJobSchema = z.object({
   context_files: z.array(z.string().min(1, 'Context file paths cannot be empty.')).min(1, 'Provide at least one context file.'),
   notes: z.string().min(1).optional(),
   base_ref: z.string().min(1).default('origin/main'),
+  feature_id: z.string().min(1, 'Feature ID cannot be empty.').optional(),
+  feature_part: z.string().min(1, 'Feature part cannot be empty.').optional(),
 });
 
 const listJobsSchema = z.object({
   status: z.enum(JOB_STATUSES).optional(),
   worker_type: z.string().min(1).optional(),
+  feature_id: z.string().min(1).optional(),
 });
 
 const getJobSchema = z.object({
@@ -90,7 +93,7 @@ const formatJob = (job: Job): string => {
 };
 
 const summarizeListFilters = (filter?: ListJobsFilter): string => {
-  if (!filter || (!filter.status && !filter.worker_type)) {
+  if (!filter || (!filter.status && !filter.worker_type && !filter.feature_id)) {
     return 'none';
   }
   const parts: string[] = [];
@@ -100,6 +103,9 @@ const summarizeListFilters = (filter?: ListJobsFilter): string => {
   if (filter.worker_type) {
     parts.push(`worker_type=${filter.worker_type}`);
   }
+  if (filter.feature_id) {
+    parts.push(`feature_id=${filter.feature_id}`);
+  }
   return parts.join(', ');
 };
 
@@ -107,9 +113,10 @@ const normalizeListFilter = (input: z.infer<typeof listJobsSchema>): ListJobsFil
   const filter: ListJobsFilter = {
     status: input.status,
     worker_type: input.worker_type?.trim() || undefined,
+    feature_id: input.feature_id?.trim() || undefined,
   };
 
-  if (!filter.status && !filter.worker_type) {
+  if (!filter.status && !filter.worker_type && !filter.feature_id) {
     return undefined;
   }
 
@@ -149,7 +156,7 @@ const buildConversationHistory = (job: Job): string => {
 export const registerJobTools = (server: McpServer, orchestratorClient = new OrchestratorClient()): void => {
   server.registerTool('enqueue_codex_job', {
     title: 'Enqueue Codex Job',
-    description: 'Enqueue a new Codex worker job via the orchestrator.',
+    description: 'Enqueue a new Codex worker job via the orchestrator (optionally tagging it with feature metadata).',
     inputSchema: enqueueCodexJobSchema,
   }, async (args) => {
     const job = await orchestratorClient.enqueueCodexJob({
@@ -157,6 +164,8 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
       context_files: args.context_files.map((file) => file.trim()),
       notes: args.notes?.trim() || undefined,
       base_ref: args.base_ref?.trim() || undefined,
+      feature_id: args.feature_id?.trim() || undefined,
+      feature_part: args.feature_part?.trim() || undefined,
     });
 
     const summary = `Enqueued Codex job ${job.id}\n\n${formatJob(job)}`;
@@ -165,7 +174,7 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
 
   server.registerTool('list_jobs', {
     title: 'List Jobs',
-    description: 'List orchestrator jobs with optional status/worker filters.',
+    description: 'List orchestrator jobs with optional status/worker/feature filters.',
     inputSchema: listJobsSchema,
   }, async (args) => {
     const filter = normalizeListFilter(args);
@@ -281,7 +290,7 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
     const codexStatus = extractCodexStatus(codexResult);
 
     // Extract new conversationId from session files
-    let nextConversationId = extractConversationId(codexResult);
+    let nextConversationId: string | null | undefined = extractConversationId(codexResult);
     if (!nextConversationId) {
       nextConversationId = extractLatestSessionId(beforeTimestamp) ?? job.conversation_id;
     }

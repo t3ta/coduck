@@ -15,6 +15,8 @@ export interface Job {
   branch_name: string;
   worktree_path: string;
   worker_type: string;
+  feature_id?: string | null;
+  feature_part?: string | null;
   status: JobStatus;
   spec_json: SpecJson;
   result_summary: string | null;

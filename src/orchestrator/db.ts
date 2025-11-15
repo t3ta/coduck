@@ -38,6 +38,8 @@ export const runMigrations = (): void => {
       branch_name TEXT NOT NULL,
       worktree_path TEXT NOT NULL,
       worker_type TEXT NOT NULL,
+      feature_id TEXT,
+      feature_part TEXT,
       status TEXT NOT NULL,
       spec_json TEXT NOT NULL,
       result_summary TEXT,
@@ -52,9 +54,19 @@ export const runMigrations = (): void => {
 
   const columns = db.prepare(`PRAGMA table_info(jobs)`).all() as Array<{ name: string }>;
   const hasConversationId = columns.some((column) => column.name === 'conversation_id');
+  const hasFeatureId = columns.some((column) => column.name === 'feature_id');
+  const hasFeaturePart = columns.some((column) => column.name === 'feature_part');
   if (!hasConversationId) {
     db.exec('ALTER TABLE jobs ADD COLUMN conversation_id TEXT');
   }
+  if (!hasFeatureId) {
+    db.exec('ALTER TABLE jobs ADD COLUMN feature_id TEXT');
+  }
+  if (!hasFeaturePart) {
+    db.exec('ALTER TABLE jobs ADD COLUMN feature_part TEXT');
+  }
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_jobs_feature_id ON jobs(feature_id)');
 };
 
 export const initDb = (): BetterSqlite3Database => {

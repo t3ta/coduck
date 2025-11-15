@@ -10,6 +10,8 @@ type JobRow = {
   branch_name: string;
   worktree_path: string;
   worker_type: string;
+  feature_id: string | null;
+  feature_part: string | null;
   status: JobStatus;
   spec_json: string;
   result_summary: string | null;
@@ -19,6 +21,23 @@ type JobRow = {
 };
 
 export type CreateJobInput = Omit<Job, 'id' | 'created_at' | 'updated_at'>;
+
+const JOB_COLUMNS = [
+  'id',
+  'repo_url',
+  'base_ref',
+  'branch_name',
+  'worktree_path',
+  'worker_type',
+  'feature_id',
+  'feature_part',
+  'status',
+  'spec_json',
+  'result_summary',
+  'conversation_id',
+  'created_at',
+  'updated_at',
+].join(', ');
 
 const serializeResultSummary = (value: unknown): string | null => {
   if (value === undefined || value === null) {
@@ -34,6 +53,8 @@ const deserializeJob = (row: JobRow): Job => ({
   branch_name: row.branch_name,
   worktree_path: row.worktree_path,
   worker_type: row.worker_type,
+  feature_id: row.feature_id,
+  feature_part: row.feature_part,
   status: row.status,
   spec_json: JSON.parse(row.spec_json),
   result_summary: row.result_summary,
@@ -58,13 +79,15 @@ export const createJob = (job: CreateJobInput): Job => {
       branch_name,
       worktree_path,
       worker_type,
+      feature_id,
+      feature_part,
       status,
       spec_json,
       result_summary,
       conversation_id,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   insert.run(
@@ -74,6 +97,8 @@ export const createJob = (job: CreateJobInput): Job => {
     job.branch_name,
     job.worktree_path,
     job.worker_type,
+    job.feature_id ?? null,
+    job.feature_part ?? null,
     job.status,
     JSON.stringify(job.spec_json),
     job.result_summary ?? null,
@@ -92,13 +117,13 @@ export const createJob = (job: CreateJobInput): Job => {
 
 export const getJob = (id: string): Job | null => {
   const db = getDb();
-  const stmt = db.prepare('SELECT * FROM jobs WHERE id = ?');
+  const stmt = db.prepare(`SELECT ${JOB_COLUMNS} FROM jobs WHERE id = ?`);
   const row = stmt.get(id) as JobRow | undefined;
   if (!row) return null;
   return deserializeJob(row);
 };
 
-export const listJobs = (filter?: { status?: JobStatus; worker_type?: string }): Job[] => {
+export const listJobs = (filter?: { status?: JobStatus; worker_type?: string; feature_id?: string }): Job[] => {
   const db = getDb();
   const conditions: string[] = [];
   const params: Array<string> = [];
@@ -113,8 +138,13 @@ export const listJobs = (filter?: { status?: JobStatus; worker_type?: string }):
     params.push(filter.worker_type);
   }
 
+  if (filter?.feature_id) {
+    conditions.push('feature_id = ?');
+    params.push(filter.feature_id);
+  }
+
   const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const query = `SELECT * FROM jobs ${whereClause} ORDER BY datetime(created_at) DESC`;
+  const query = `SELECT ${JOB_COLUMNS} FROM jobs ${whereClause} ORDER BY datetime(created_at) DESC`;
   const stmt = db.prepare(query);
   const rows = stmt.all(...params) as JobRow[];
   return rows.map(deserializeJob);
@@ -167,7 +197,7 @@ export const claimJob = (worker_type: string): Job | null => {
 
   const transaction = db.transaction((type: string): Job | null => {
     const selectStmt = db.prepare(
-      `SELECT * FROM jobs WHERE status = 'pending' AND worker_type = ? ORDER BY datetime(created_at) ASC LIMIT 1`
+      `SELECT ${JOB_COLUMNS} FROM jobs WHERE status = 'pending' AND worker_type = ? ORDER BY datetime(created_at) ASC LIMIT 1`
     );
     const row = selectStmt.get(type) as JobRow | undefined;
     if (!row) return null;
@@ -185,7 +215,7 @@ export const claimJob = (worker_type: string): Job | null => {
 export const deleteJob = (id: string): Job | null => {
   const db = getDb();
   const transaction = db.transaction((jobId: string): Job | null => {
-    const selectStmt = db.prepare('SELECT * FROM jobs WHERE id = ?');
+    const selectStmt = db.prepare(`SELECT ${JOB_COLUMNS} FROM jobs WHERE id = ?`);
     const row = selectStmt.get(jobId) as JobRow | undefined;
     if (!row) return null;
 
@@ -224,7 +254,9 @@ export const deleteJobs = (filter: { statuses?: JobStatus[]; maxAgeDays?: number
       params.push(cutoff);
     }
 
-    const selectStmt = db.prepare(`SELECT * FROM jobs WHERE ${conditions.join(' AND ')} ORDER BY datetime(created_at) ASC`);
+    const selectStmt = db.prepare(
+      `SELECT ${JOB_COLUMNS} FROM jobs WHERE ${conditions.join(' AND ')} ORDER BY datetime(created_at) ASC`
+    );
     const rows = selectStmt.all(...params) as JobRow[];
 
     if (!rows.length) {

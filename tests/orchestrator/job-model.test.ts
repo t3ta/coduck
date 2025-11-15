@@ -26,6 +26,8 @@ const createJobPayload = (overrides: Partial<JobModule['CreateJobInput']> = {}):
   },
   result_summary: null,
   conversation_id: null,
+  feature_id: null,
+  feature_part: null,
   ...overrides,
 });
 
@@ -94,5 +96,42 @@ describe('orchestrator job model', () => {
     const update = () => jobModule.updateJobStatus(job.id, 'failed', { error: 'boom' }, 'running');
 
     expect(update).toThrow();
+  });
+
+  describe('feature metadata', () => {
+    it('creates jobs with feature_id and feature_part', () => {
+      const payload = createJobPayload({
+        feature_id: 'comment-system',
+        feature_part: 'backend',
+      });
+      const job = jobModule.createJob(payload);
+      expect(job.feature_id).toBe('comment-system');
+      expect(job.feature_part).toBe('backend');
+    });
+
+    it('creates jobs without feature metadata', () => {
+      const job = jobModule.createJob(createJobPayload());
+      expect(job.feature_id).toBeNull();
+      expect(job.feature_part).toBeNull();
+    });
+
+    it('filters jobs by feature_id', () => {
+      jobModule.createJob(createJobPayload({ feature_id: 'feature-a' }));
+      jobModule.createJob(createJobPayload({ feature_id: 'feature-b' }));
+      jobModule.createJob(createJobPayload({ feature_id: 'feature-a' }));
+      jobModule.createJob(createJobPayload());
+
+      const filtered = jobModule.listJobs({ feature_id: 'feature-a' });
+      expect(filtered).toHaveLength(2);
+      expect(filtered.every((job) => job.feature_id === 'feature-a')).toBe(true);
+    });
+
+    it('returns all jobs when feature_id filter is omitted', () => {
+      jobModule.createJob(createJobPayload({ feature_id: 'feature-a' }));
+      jobModule.createJob(createJobPayload());
+
+      const allJobs = jobModule.listJobs();
+      expect(allJobs).toHaveLength(2);
+    });
   });
 });

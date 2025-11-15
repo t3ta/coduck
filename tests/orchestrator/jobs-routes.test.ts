@@ -2,6 +2,7 @@ import http from 'node:http';
 import { AddressInfo } from 'node:net';
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from '../utils/jest-lite.js';
+import type { Job } from '../../src/shared/types.ts';
 
 const dbModulePromise = import('../../src/orchestrator/db.ts');
 const jobModulePromise = import('../../src/orchestrator/models/job.ts');
@@ -109,5 +110,88 @@ describe('orchestrator job routes', () => {
     const stored = jobModule.getJob(created.id);
     expect(stored?.status).toBe('done');
     expect(stored?.conversation_id).toBe('conv-42');
+  });
+
+  describe('POST /jobs with feature metadata', () => {
+    it('creates jobs with feature_id and feature_part', async () => {
+      const payload = createJobPayload({
+        feature_id: 'user-auth',
+        feature_part: 'frontend',
+      });
+      const response = await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      expect(response.status).toBe(201);
+      const job = (await response.json()) as Job;
+      expect(job.feature_id).toBe('user-auth');
+      expect(job.feature_part).toBe('frontend');
+    });
+
+    it('creates jobs without feature metadata', async () => {
+      const response = await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createJobPayload()),
+      });
+      expect(response.status).toBe(201);
+      const job = (await response.json()) as Job;
+      expect(job.feature_id).toBeNull();
+      expect(job.feature_part).toBeNull();
+    });
+
+    it('rejects empty feature_id strings', async () => {
+      const response = await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createJobPayload({ feature_id: '' })),
+      });
+      expect(response.status).toBe(400);
+    });
+  });
+
+  describe('GET /jobs with feature_id filter', () => {
+    it('filters jobs by feature_id', async () => {
+      await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createJobPayload({ feature_id: 'feature-x' })),
+      });
+      await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createJobPayload({ feature_id: 'feature-y' })),
+      });
+      await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createJobPayload({ feature_id: 'feature-x' })),
+      });
+
+      const response = await fetch(`${baseUrl}/jobs?feature_id=feature-x`);
+      expect(response.status).toBe(200);
+      const jobs = (await response.json()) as Job[];
+      expect(jobs).toHaveLength(2);
+      expect(jobs.every((job) => job.feature_id === 'feature-x')).toBe(true);
+    });
+
+    it('returns all jobs when feature_id filter is absent', async () => {
+      await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createJobPayload({ feature_id: 'feature-z' })),
+      });
+      await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(createJobPayload()),
+      });
+
+      const response = await fetch(`${baseUrl}/jobs`);
+      expect(response.status).toBe(200);
+      const jobs = (await response.json()) as Job[];
+      expect(jobs).toHaveLength(2);
+    });
   });
 });

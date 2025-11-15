@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import type { JobStatus, SpecJson } from '../../shared/types.js';
 import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJobStatus } from '../models/job.js';
-import { removeWorktree } from '../worker/worktree.js';
+import { removeWorktree } from '../../worker/worktree.js';
 
 const jobStatusEnum = z.enum(['pending', 'running', 'awaiting_input', 'done', 'failed', 'cancelled']);
 
@@ -25,11 +25,14 @@ const createJobSchema = z.object({
   spec_json: specJsonSchema,
   result_summary: z.unknown().optional(),
   conversation_id: z.string().nullable().optional(),
+  feature_id: z.string().min(1).optional(),
+  feature_part: z.string().min(1).optional(),
 });
 
 const listJobsQuerySchema = z.object({
   status: jobStatusEnum.optional(),
   worker_type: z.string().min(1).optional(),
+  feature_id: z.string().min(1).optional(),
 });
 
 const claimJobQuerySchema = z.object({
@@ -77,6 +80,8 @@ router.post('/', (req, res, next) => {
       spec_json: payload.spec_json,
       result_summary: resultSummary,
       conversation_id: payload.conversation_id ?? null,
+      feature_id: payload.feature_id ?? null,
+      feature_part: payload.feature_part ?? null,
     });
     res.status(201).json(job);
   } catch (error) {
@@ -86,11 +91,16 @@ router.post('/', (req, res, next) => {
 
 router.get('/', (req, res, next) => {
   try {
-    const filters = listJobsQuerySchema.parse({
+    const validatedQuery = listJobsQuerySchema.parse({
       status: toFilterValue(req.query.status),
       worker_type: toFilterValue(req.query.worker_type),
+      feature_id: toFilterValue(req.query.feature_id),
     });
-    const jobs = listJobs(filters);
+    const filter: Parameters<typeof listJobs>[0] = {};
+    if (validatedQuery.status) filter.status = validatedQuery.status as JobStatus;
+    if (validatedQuery.worker_type) filter.worker_type = validatedQuery.worker_type;
+    if (validatedQuery.feature_id) filter.feature_id = validatedQuery.feature_id;
+    const jobs = listJobs(filter);
     res.json(jobs);
   } catch (error) {
     next(error);
