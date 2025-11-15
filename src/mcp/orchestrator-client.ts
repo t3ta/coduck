@@ -132,7 +132,8 @@ export class OrchestratorClient {
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
-      branchName = `feature/${sanitizedFeatureId}`;
+      // Fall back to auto-generated branch if sanitized feature_id is empty
+      branchName = sanitizedFeatureId ? `feature/${sanitizedFeatureId}` : this.generateJobMetadata(args.goal).branchName;
     } else {
       branchName = this.generateJobMetadata(args.goal).branchName;
     }

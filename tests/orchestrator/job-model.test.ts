@@ -150,6 +150,20 @@ describe('orchestrator job model', () => {
       expect(claimed2?.id).toBe(job2.id);
       expect(claimed2?.status).toBe('running');
     });
+
+    it('does not claim jobs with same (branch_name, repo_url) as awaiting_input jobs', () => {
+      const job1 = jobModule.createJob(createJobPayload({ branch_name: 'feature/shared' }));
+      const job2 = jobModule.createJob(createJobPayload({ branch_name: 'feature/shared' }));
+
+      jobModule.claimJob('codex');
+      jobModule.updateJobStatus(job1.id, 'awaiting_input', { message: 'Need input' }, 'running');
+
+      const claimed2 = jobModule.claimJob('codex');
+      expect(claimed2).toBeNull();
+
+      const stored2 = jobModule.getJob(job2.id);
+      expect(stored2?.status).toBe('pending');
+    });
   });
 
   describe('feature metadata', () => {

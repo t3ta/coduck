@@ -201,14 +201,14 @@ export const claimJob = (worker_type: string): Job | null => {
   const db = getDb();
 
   const transaction = db.transaction((type: string): Job | null => {
-    // Exclude jobs with same (branch_name, repo_url) as currently running jobs to prevent concurrent worktree access
+    // Exclude jobs with same (branch_name, repo_url) as currently running or awaiting_input jobs to prevent concurrent worktree access
     const selectStmt = db.prepare(
       `SELECT ${JOB_COLUMNS} FROM jobs
        WHERE status = 'pending'
          AND worker_type = ?
          AND NOT EXISTS (
            SELECT 1 FROM jobs AS running_jobs
-           WHERE running_jobs.status = 'running'
+           WHERE running_jobs.status IN ('running', 'awaiting_input')
              AND running_jobs.branch_name = jobs.branch_name
              AND running_jobs.repo_url = jobs.repo_url
          )

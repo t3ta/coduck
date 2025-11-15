@@ -329,6 +329,31 @@ describe('OrchestratorClient', () => {
       expect(body.branch_name).toBe('feature/user-auth-test');
     });
 
+    it('falls back to auto-generated branch when feature_id becomes empty after sanitization', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(createJobResponse()),
+      });
+
+      const client = new OrchestratorClient({
+        baseUrl: 'http://localhost:5555',
+        repoUrl: 'https://example.com/repo.git',
+        worktreeBaseDir: '/worktrees',
+        fetchImpl: fetchMock,
+      });
+
+      await client.enqueueCodexJob({
+        goal: 'Implement feature',
+        context_files: ['src/index.ts'],
+        feature_id: '🚀',
+      });
+
+      const [, init] = fetchMock.mock.calls[0];
+      const body = JSON.parse((init?.body as string) ?? '{}');
+      expect(body.branch_name.startsWith('codex/')).toBe(true);
+    });
+
     it('sends push_mode="never" when specified', async () => {
       const fetchMock = jest.fn().mockResolvedValue({
         ok: true,
