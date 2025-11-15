@@ -9,6 +9,7 @@ Job orchestrator with Codex worker and MCP server integration.
 - **Git Worktree Isolation**: Each job runs in an isolated git worktree
 - **MCP Server**: Claude Code integration via Model Context Protocol
 - **Conversation Continuity**: Track and continue Codex conversations across jobs
+- **Job Cleanup**: Manual and automated cleanup of completed jobs and orphaned worktrees
 
 ## Architecture
 
@@ -95,6 +96,75 @@ Add to `~/.claude/config.json`:
   }
 }
 ```
+
+## Cleanup
+
+### CLI Cleanup
+
+```bash
+# Dry run - show what would be removed
+npm run cleanup -- --dry-run --all
+
+# Clean up completed jobs (done, failed, cancelled)
+npm run cleanup -- --jobs
+
+# Clean up jobs with specific status
+npm run cleanup -- --jobs --status=done,failed
+
+# Clean up jobs older than 7 days
+npm run cleanup -- --jobs --max-age=7
+
+# Clean up orphaned worktrees
+npm run cleanup -- --worktrees
+
+# Clean up unused repository cache
+npm run cleanup -- --repo-cache
+
+# Clean up everything
+npm run cleanup -- --all
+```
+
+### MCP Tools for Claude Code
+
+Available tools:
+
+- `delete_job`: Delete a single job by ID
+- `cleanup_jobs`: Delete multiple jobs with filters
+
+```typescript
+// Delete a single job
+delete_job({ id: "job-id" })
+
+// Cleanup failed jobs
+cleanup_jobs({ statuses: ["failed"] })
+
+// Cleanup jobs older than 7 days
+cleanup_jobs({ statuses: ["done", "failed"], maxAgeDays: 7 })
+```
+
+### HTTP API
+
+Endpoints:
+
+- `DELETE /jobs/:id` - Delete a single job
+- `POST /jobs/cleanup` - Delete multiple jobs with filters
+
+```bash
+# Delete a single job
+curl -X DELETE http://localhost:3000/jobs/{job-id}
+
+# Cleanup failed jobs
+curl -X POST http://localhost:3000/jobs/cleanup \
+  -H "Content-Type: application/json" \
+  -d '{"statuses": ["failed"]}'
+```
+
+### Safety Features
+
+- Protected statuses: `running` and `awaiting_input` jobs cannot be deleted
+- Confirmation prompt for destructive operations (CLI)
+- Dry-run mode to preview changes (CLI)
+- Automatic worktree cleanup when deleting jobs
 
 ## Known Limitations
 

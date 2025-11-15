@@ -6,7 +6,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "orchestrator": "tsx src/orchestrator.ts",
     "worker": "tsx src/worker.ts",
-    "mcp": "tsx src/mcp.ts"
+    "mcp": "tsx src/mcp.ts",
+    "cleanup": "tsx src/cli/cleanup.ts"
   },
   "keywords": [],
   "author": "",
