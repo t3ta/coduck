@@ -120,9 +120,7 @@ const sanitizeCleanupOptions = (options: z.infer<typeof cleanupJobsSchema>): Cle
 
   if (options.statuses?.length) {
     const allowed = options.statuses.filter((status) => !PROTECTED_STATUSES.has(status));
-    if (allowed.length) {
-      sanitized.statuses = allowed;
-    }
+    sanitized.statuses = allowed;
   }
 
   if (typeof options.maxAgeDays === 'number') {
