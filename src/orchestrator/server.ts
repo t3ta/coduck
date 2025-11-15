@@ -3,6 +3,7 @@ import { ZodError } from 'zod';
 
 import { appConfig } from '../shared/config.js';
 import jobsRouter from './routes/jobs.js';
+import { router as featuresRouter } from './routes/features.js';
 import { initDb } from './db.js';
 
 export const createApp = () => {
@@ -10,6 +11,7 @@ export const createApp = () => {
 
   app.use(express.json());
   app.use('/jobs', jobsRouter);
+  app.use('/features', featuresRouter);
 
   app.use((req, res) => {
     res.status(404).json({ error: 'Not found' });
