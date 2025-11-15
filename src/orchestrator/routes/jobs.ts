@@ -42,7 +42,7 @@ const completeJobSchema = z.object({
 });
 
 const cleanupJobsSchema = z.object({
-  statuses: z.array(jobStatusEnum).min(1).optional(),
+  statuses: z.array(jobStatusEnum).optional(),
   maxAgeDays: z.number().int().nonnegative().optional(),
 });
 
