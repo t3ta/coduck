@@ -237,10 +237,14 @@ export class CodexWorker {
     try {
       if (success) {
         await this.completeJob(job.id, 'done', summary, conversationId);
-        if (worktreeContext) {
+        if (worktreeContext && job.push_mode !== 'never') {
           await worktreeContext.cleanup();
+          console.log(`Job ${job.id} completed. Worktree cleaned up.`);
+        } else if (worktreeContext && job.push_mode === 'never') {
+          console.log(`Job ${job.id} completed. Worktree preserved (push_mode='never').`);
+        } else {
+          console.log(`Job ${job.id} completed.`);
         }
-        console.log(`Job ${job.id} completed.`);
       } else {
         await this.completeJob(job.id, 'failed', summary, conversationId);
         console.log(`Job ${job.id} reported as failed.`);

@@ -22,7 +22,7 @@ const createJob = (overrides: Partial<Job> = {}): Job => ({
 });
 
 describe('CodexWorker handleJob', () => {
-  it('reports successful Codex execution as done', async () => {
+  it('reports successful Codex execution as done (default push_mode=always)', async () => {
     const cleanup = jest.fn().mockResolvedValue(undefined);
     const createWorktree = jest.fn().mockResolvedValue({
       path: '/tmp/worktree',
@@ -138,7 +138,7 @@ describe('CodexWorker handleJob', () => {
   });
 
   describe('handleJob with push_mode', () => {
-    it('skips push when push_mode is "never"', async () => {
+    it('skips push and cleanup when push_mode is "never"', async () => {
       const cleanup = jest.fn().mockResolvedValue(undefined);
       const createWorktree = jest.fn().mockResolvedValue({
         path: '/tmp/worktree',
@@ -161,6 +161,7 @@ describe('CodexWorker handleJob', () => {
       await (worker as any).handleJob(createJob({ push_mode: 'never' }));
 
       expect(pushBranch.mock.calls.length).toBe(0);
+      expect(cleanup.mock.calls.length).toBe(0);
       expect(completeJob.mock.calls.length).toBe(1);
       const [, status, summary] = completeJob.mock.calls[0];
       expect(status).toBe('done');
@@ -168,7 +169,7 @@ describe('CodexWorker handleJob', () => {
       expect(summary.pushed).toBe(false);
     });
 
-    it('pushes changes when push_mode is "always"', async () => {
+    it('pushes changes and cleans up when push_mode is "always"', async () => {
       const cleanup = jest.fn().mockResolvedValue(undefined);
       const createWorktree = jest.fn().mockResolvedValue({
         path: '/tmp/worktree',
@@ -191,6 +192,7 @@ describe('CodexWorker handleJob', () => {
       await (worker as any).handleJob(createJob({ push_mode: 'always' }));
 
       expect(pushBranch.mock.calls.length).toBe(1);
+      expect(cleanup.mock.calls.length).toBe(1);
       expect(completeJob.mock.calls.length).toBe(1);
       const [, status, summary] = completeJob.mock.calls[0];
       expect(status).toBe('done');
@@ -198,7 +200,7 @@ describe('CodexWorker handleJob', () => {
       expect(summary.pushed).toBe(true);
     });
 
-    it('skips push when there are no changes regardless of push_mode', async () => {
+    it('skips push but cleans up when there are no changes (push_mode=always)', async () => {
       const cleanup = jest.fn().mockResolvedValue(undefined);
       const createWorktree = jest.fn().mockResolvedValue({
         path: '/tmp/worktree',
@@ -221,6 +223,7 @@ describe('CodexWorker handleJob', () => {
       await (worker as any).handleJob(createJob({ push_mode: 'always' }));
 
       expect(pushBranch.mock.calls.length).toBe(0);
+      expect(cleanup.mock.calls.length).toBe(1);
       expect(completeJob.mock.calls.length).toBe(1);
       const [, status, summary] = completeJob.mock.calls[0];
       expect(status).toBe('done');

@@ -82,7 +82,21 @@ export async function createWorktree(
   } else {
     // Create new worktree
     await runGit(['fetch', '--all'], { cwd: resolvedRepoPath });
-    await runGit(['worktree', 'add', '-B', branchName, resolvedWorktreePath, baseRef], { cwd: resolvedRepoPath });
+
+    // Check if branch already exists
+    const branchCheckResult = await runGit(['show-ref', '--verify', `refs/heads/${branchName}`], { cwd: resolvedRepoPath })
+      .catch(() => null);
+    const branchExists = branchCheckResult !== null;
+
+    if (branchExists) {
+      // Branch exists - checkout without resetting
+      console.log(`Branch ${branchName} exists, creating worktree from existing branch`);
+      await runGit(['worktree', 'add', resolvedWorktreePath, branchName], { cwd: resolvedRepoPath });
+    } else {
+      // Branch doesn't exist - create from baseRef
+      console.log(`Branch ${branchName} doesn't exist, creating from ${baseRef}`);
+      await runGit(['worktree', 'add', '-B', branchName, resolvedWorktreePath, baseRef], { cwd: resolvedRepoPath });
+    }
   }
 
   const cleanup = async () => {
