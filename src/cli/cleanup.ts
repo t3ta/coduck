@@ -326,10 +326,7 @@ const cleanupJobWorktrees = async (jobs: Job[], dryRun: boolean): Promise<number
   return removeWorktreeTargets(paths, dryRun);
 };
 
-const cleanupJobs = async (
-  client: OrchestratorClient,
-  options: CleanupOptions
-): Promise<JobCleanupResult> => {
+const cleanupJobs = async (options: CleanupOptions): Promise<JobCleanupResult> => {
   logSection('Job Cleanup');
   console.log(
     `Filters: status=${options.statuses.join(', ')}${
@@ -372,6 +369,7 @@ const cleanupJobs = async (
     return { deleted: 0, worktreesRemoved: 0 };
   }
 
+  const client = new OrchestratorClient();
   const response = await client.cleanupJobs({ statuses: effectiveStatuses, maxAgeDays: options.maxAgeDays });
   console.log(`Deleted ${response.deleted} job(s).`);
 
@@ -499,7 +497,6 @@ const main = async (): Promise<void> => {
     console.log('Dry run enabled — showing what would be removed.');
   }
 
-  const client = new OrchestratorClient();
   const totals = {
     jobs: 0,
     jobWorktrees: 0,
@@ -508,7 +505,7 @@ const main = async (): Promise<void> => {
   };
 
   if (options.jobs) {
-    const result = await cleanupJobs(client, options);
+    const result = await cleanupJobs(options);
     totals.jobs = result.deleted;
     totals.jobWorktrees = result.worktreesRemoved;
   }
