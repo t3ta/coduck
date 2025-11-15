@@ -6,11 +6,12 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { OrchestratorClient, type ListJobsFilter } from '../orchestrator-client.js';
 import type { Job, JobStatus } from '../../shared/types.js';
 import {
-  callCodexReply,
+  callCodex,
   collectTextContent,
   codexResultIndicatesError,
   extractCodexStatus,
   extractConversationId,
+  extractLatestSessionId,
 } from '../../shared/codex-mcp.js';
 
 const JOB_STATUSES = ['pending', 'running', 'awaiting_input', 'done', 'failed', 'cancelled'] as const;
@@ -104,6 +105,21 @@ const normalizeListFilter = (input: z.infer<typeof listJobsSchema>): ListJobsFil
   return filter;
 };
 
+const buildConversationHistory = (job: Job): string => {
+  const summary = parseResultSummary(job.result_summary);
+  const continuations = Array.isArray(summary.continuations)
+    ? (summary.continuations as Array<{ prompt: string; response: string }>)
+    : [];
+
+  if (continuations.length === 0) {
+    return '(No previous conversation)';
+  }
+
+  return continuations
+    .map(({ prompt, response }) => `User: ${prompt}\n\nAssistant: ${response}`)
+    .join('\n\n---\n\n');
+};
+
 export const registerJobTools = (server: McpServer, orchestratorClient = new OrchestratorClient()): void => {
   server.registerTool('enqueue_codex_job', {
     title: 'Enqueue Codex Job',
@@ -153,22 +169,47 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
     const prompt = args.prompt.trim();
     const job = await orchestratorClient.getJob(jobId);
 
-    if (!job.conversation_id) {
-      throw new Error(`Job ${jobId} does not have an active Codex conversation.`);
-    }
     if (job.status !== 'awaiting_input') {
       throw new Error(`Job ${jobId} is not awaiting input (current status: ${job.status}).`);
     }
 
-    const codexResult = await callCodexReply({
-      conversationId: job.conversation_id,
+    // Build conversation history from previous continuations
+    const conversationHistory = buildConversationHistory(job);
+
+    // Create full prompt with context
+    const fullPrompt = [
+      '# Original Goal',
+      job.spec_json.goal,
+      '',
+      '# Context Files',
+      job.spec_json.context_files.map((file) => `- ${file}`).join('\n'),
+      '',
+      job.spec_json.notes ? `# Notes\n${job.spec_json.notes}\n` : '',
+      '# Previous Conversation',
+      conversationHistory,
+      '',
+      '# New Request',
       prompt,
+    ].filter(line => line !== '').join('\n');
+
+    // Execute with callCodex (new session with conversation history in prompt)
+    const beforeTimestamp = Math.floor(Date.now() / 1000);
+    const codexResult = await callCodex({
+      prompt: fullPrompt,
+      worktreePath: job.worktree_path,
+      sandbox: 'workspace-write',
+      approvalPolicy: 'never',
     });
 
     const responseText = collectTextContent(codexResult);
     const followUpError = codexResultIndicatesError(codexResult);
     const codexStatus = extractCodexStatus(codexResult);
-    const nextConversationId = extractConversationId(codexResult) ?? job.conversation_id;
+
+    // Extract new conversationId from session files
+    let nextConversationId = extractConversationId(codexResult);
+    if (!nextConversationId) {
+      nextConversationId = extractLatestSessionId(beforeTimestamp) ?? job.conversation_id;
+    }
 
     const summaryObject = parseResultSummary(job.result_summary);
     const timestamp = new Date().toISOString();
@@ -187,7 +228,7 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
       newStatus = 'awaiting_input';
     } else {
       newStatus = 'done';
-      summaryObject.message = 'Codex conversation finished after receiving additional input.';
+      summaryObject.message = 'Codex conversation continued successfully (via new session with conversation history).';
     }
 
     const updatedJob = await orchestratorClient.updateJobStatus(jobId, newStatus, {
@@ -199,6 +240,7 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
       `Continued Codex job ${jobId}`,
       `Prompt:\n${prompt}`,
       responseText ? `Response:\n${responseText}` : 'Response: (no text output)',
+      `New conversationId: ${nextConversationId ?? 'n/a'}`,
       `New status: ${newStatus}`,
     ].join('\n\n');
 
