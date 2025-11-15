@@ -253,7 +253,10 @@ export class OrchestratorClient {
   private resolveWorktreePath(branchName: string): string {
     // Include repo hash to namespace worktrees by repository
     const repoHash = createHash('sha1').update(this.repoUrl).digest('hex').slice(0, 8);
-    const worktreeDir = `${repoHash}-${branchName.replace(/[\\/]/g, '-')}`;
+    // Include branch hash to avoid collisions between branches that differ only in slashes vs dashes
+    const branchHash = createHash('sha1').update(branchName).digest('hex').slice(0, 8);
+    const sanitizedBranch = branchName.replace(/[\\/]/g, '-').slice(0, 64);
+    const worktreeDir = `${repoHash}-${sanitizedBranch}-${branchHash}`;
     return path.resolve(this.worktreeBaseDir, worktreeDir);
   }
 

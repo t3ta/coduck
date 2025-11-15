@@ -99,9 +99,9 @@ describe('orchestrator job model', () => {
   });
 
   describe('concurrent job prevention', () => {
-    it('does not claim jobs with same branch_name as running jobs', () => {
-      const job1 = jobModule.createJob(createJobPayload({ branch_name: 'feature/shared' }));
-      const job2 = jobModule.createJob(createJobPayload({ branch_name: 'feature/shared' }));
+    it('does not claim jobs with same (branch_name, repo_url) as running jobs', () => {
+      const job1 = jobModule.createJob(createJobPayload({ branch_name: 'feature/shared', repo_url: 'https://example.com/repo-a.git' }));
+      const job2 = jobModule.createJob(createJobPayload({ branch_name: 'feature/shared', repo_url: 'https://example.com/repo-a.git' }));
 
       const claimed1 = jobModule.claimJob('codex');
       expect(claimed1?.id).toBe(job1.id);
@@ -120,6 +120,19 @@ describe('orchestrator job model', () => {
 
       const claimed1 = jobModule.claimJob('codex');
       expect(claimed1?.id).toBe(job1.id);
+
+      const claimed2 = jobModule.claimJob('codex');
+      expect(claimed2?.id).toBe(job2.id);
+      expect(claimed2?.status).toBe('running');
+    });
+
+    it('allows concurrent claims for same branch_name but different repos', () => {
+      const job1 = jobModule.createJob(createJobPayload({ branch_name: 'feature/shared', repo_url: 'https://example.com/repo-a.git' }));
+      const job2 = jobModule.createJob(createJobPayload({ branch_name: 'feature/shared', repo_url: 'https://example.com/repo-b.git' }));
+
+      const claimed1 = jobModule.claimJob('codex');
+      expect(claimed1?.id).toBe(job1.id);
+      expect(claimed1?.status).toBe('running');
 
       const claimed2 = jobModule.claimJob('codex');
       expect(claimed2?.id).toBe(job2.id);
