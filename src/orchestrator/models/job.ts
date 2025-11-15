@@ -201,8 +201,16 @@ export const claimJob = (worker_type: string): Job | null => {
   const db = getDb();
 
   const transaction = db.transaction((type: string): Job | null => {
+    // Exclude jobs with same branch_name as currently running jobs to prevent concurrent worktree access
     const selectStmt = db.prepare(
-      `SELECT ${JOB_COLUMNS} FROM jobs WHERE status = 'pending' AND worker_type = ? ORDER BY datetime(created_at) ASC LIMIT 1`
+      `SELECT ${JOB_COLUMNS} FROM jobs
+       WHERE status = 'pending'
+         AND worker_type = ?
+         AND branch_name NOT IN (
+           SELECT DISTINCT branch_name FROM jobs WHERE status = 'running'
+         )
+       ORDER BY datetime(created_at) ASC
+       LIMIT 1`
     );
     const row = selectStmt.get(type) as JobRow | undefined;
     if (!row) return null;

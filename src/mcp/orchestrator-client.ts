@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import path from 'node:path';
 
 import { appConfig } from '../shared/config.js';
@@ -251,7 +251,9 @@ export class OrchestratorClient {
   }
 
   private resolveWorktreePath(branchName: string): string {
-    const worktreeDir = branchName.replace(/[\\/]/g, '-');
+    // Include repo hash to namespace worktrees by repository
+    const repoHash = createHash('sha1').update(this.repoUrl).digest('hex').slice(0, 8);
+    const worktreeDir = `${repoHash}-${branchName.replace(/[\\/]/g, '-')}`;
     return path.resolve(this.worktreeBaseDir, worktreeDir);
   }
 
