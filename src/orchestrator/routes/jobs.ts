@@ -27,7 +27,8 @@ const createJobSchema = z.object({
   conversation_id: z.string().nullable().optional(),
   feature_id: z.string().min(1).optional(),
   feature_part: z.string().min(1).optional(),
-});
+  push_mode: z.enum(['always', 'never']).optional(),
+});;
 
 const listJobsQuerySchema = z.object({
   status: jobStatusEnum.optional(),
@@ -82,6 +83,7 @@ router.post('/', (req, res, next) => {
       conversation_id: payload.conversation_id ?? null,
       feature_id: payload.feature_id ?? null,
       feature_part: payload.feature_part ?? null,
+      push_mode: payload.push_mode ?? 'always',
     });
     res.status(201).json(job);
   } catch (error) {

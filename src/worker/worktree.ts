@@ -69,8 +69,21 @@ export async function createWorktree(
 
   await fs.mkdir(path.dirname(resolvedWorktreePath), { recursive: true });
 
-  await runGit(['fetch', '--all'], { cwd: resolvedRepoPath });
-  await runGit(['worktree', 'add', '-B', branchName, resolvedWorktreePath, baseRef], { cwd: resolvedRepoPath });
+  // Check if worktree already exists
+  const worktreeExists = await pathExists(resolvedWorktreePath);
+  const gitFileExists = worktreeExists && await pathExists(path.join(resolvedWorktreePath, '.git'));
+
+  if (worktreeExists && gitFileExists) {
+    // Reuse existing worktree
+    console.log(`Reusing existing worktree at ${resolvedWorktreePath}`);
+    await runGit(['fetch', '--all'], { cwd: resolvedWorktreePath });
+    await runGit(['checkout', branchName], { cwd: resolvedWorktreePath });
+    await runGit(['pull', '--rebase'], { cwd: resolvedWorktreePath });
+  } else {
+    // Create new worktree
+    await runGit(['fetch', '--all'], { cwd: resolvedRepoPath });
+    await runGit(['worktree', 'add', '-B', branchName, resolvedWorktreePath, baseRef], { cwd: resolvedRepoPath });
+  }
 
   const cleanup = async () => {
     await removeWorktree(resolvedWorktreePath);

@@ -67,8 +67,10 @@ export interface EnqueueCodexJobArgs {
   context_files: string[];
   notes?: string;
   base_ref?: string;
+  branch_name?: string;
   feature_id?: string;
   feature_part?: string;
+  push_mode?: 'always' | 'never';
 }
 
 export interface ListJobsFilter {
@@ -114,22 +116,34 @@ export class OrchestratorClient {
 
   async enqueueCodexJob(args: EnqueueCodexJobArgs): Promise<Job> {
     const baseRef = args.base_ref?.trim() || DEFAULT_BASE_REF;
-    const metadata = this.generateJobMetadata(args.goal);
     const specPayload: SpecJson = {
       goal: args.goal,
       context_files: args.context_files,
       ...(args.notes ? { notes: args.notes } : {}),
     };
 
+    // Determine branch_name: explicit > feature_id > auto-generated
+    let branchName: string;
+    if (args.branch_name?.trim()) {
+      branchName = args.branch_name.trim();
+    } else if (args.feature_id?.trim()) {
+      branchName = `feature/${args.feature_id.trim()}`;
+    } else {
+      branchName = this.generateJobMetadata(args.goal).branchName;
+    }
+
+    const worktreePath = this.resolveWorktreePath(branchName);
+
     const body = {
-      repo_url: metadata.repoUrl,
+      repo_url: this.repoUrl,
       base_ref: baseRef,
-      branch_name: metadata.branchName,
-      worktree_path: metadata.worktreePath,
+      branch_name: branchName,
+      worktree_path: worktreePath,
       worker_type: WORKER_TYPE_CODEX,
       spec_json: specPayload,
       feature_id: args.feature_id,
       feature_part: args.feature_part,
+      push_mode: args.push_mode ?? 'always',
     };
 
     return this.request<Job>('/jobs', {
@@ -234,6 +248,11 @@ export class OrchestratorClient {
     }
 
     return (data ?? null) as T;
+  }
+
+  private resolveWorktreePath(branchName: string): string {
+    const worktreeDir = branchName.replace(/[\\/]/g, '-');
+    return path.resolve(this.worktreeBaseDir, worktreeDir);
   }
 
   private generateJobMetadata(goal: string): JobMetadata {

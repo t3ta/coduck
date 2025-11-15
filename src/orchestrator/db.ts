@@ -56,6 +56,8 @@ export const runMigrations = (): void => {
   const hasConversationId = columns.some((column) => column.name === 'conversation_id');
   const hasFeatureId = columns.some((column) => column.name === 'feature_id');
   const hasFeaturePart = columns.some((column) => column.name === 'feature_part');
+  const hasPushMode = columns.some((column) => column.name === 'push_mode');
+  
   if (!hasConversationId) {
     db.exec('ALTER TABLE jobs ADD COLUMN conversation_id TEXT');
   }
@@ -65,9 +67,12 @@ export const runMigrations = (): void => {
   if (!hasFeaturePart) {
     db.exec('ALTER TABLE jobs ADD COLUMN feature_part TEXT');
   }
+  if (!hasPushMode) {
+    db.exec("ALTER TABLE jobs ADD COLUMN push_mode TEXT DEFAULT 'always'");
+  }
 
   db.exec('CREATE INDEX IF NOT EXISTS idx_jobs_feature_id ON jobs(feature_id)');
-};
+};;
 
 export const initDb = (): BetterSqlite3Database => {
   const db = getDb();

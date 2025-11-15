@@ -7,6 +7,9 @@ Job orchestrator with Codex worker and MCP server integration.
 - **Job Orchestration**: SQLite-based job queue with atomic operations
 - **Codex Worker**: Automated code execution via Codex MCP server
 - **Git Worktree Isolation**: Each job runs in an isolated git worktree
+- **Worktree Reuse**: Jobs with the same branch share worktrees for efficient resource usage
+- **Flexible Branch Strategy**: Explicit branch names, feature-based branches, or auto-generated branches
+- **Push Control**: Choose between auto-push (`always`) or local-only commits (`never`)
 - **MCP Server**: Claude Code integration via Model Context Protocol
 - **Conversation Continuity**: Track and continue Codex conversations across jobs
 - **Job Cleanup**: Manual and automated cleanup of completed jobs and orphaned worktrees
@@ -23,9 +26,9 @@ Job orchestrator with Codex worker and MCP server integration.
 
 2. **Worker** (`src/worker/`)
    - Polls orchestrator for pending jobs
-   - Creates isolated git worktrees for each job
+   - Creates or reuses git worktrees (same branch → same worktree)
    - Executes Codex via MCP server
-   - Commits and pushes changes
+   - Commits changes and optionally pushes based on `push_mode`
    - Runs tests if available
 
 3. **MCP Server** (`src/mcp/`)
@@ -174,27 +177,77 @@ The `codex-reply` tool does not work due to session isolation between MCP client
 
 **Workaround**: The `continue_codex_job` tool uses `codex` (instead of `codex-reply`) with conversation history in the prompt to maintain context across turns.
 
-## Example Workflow
+## Example Workflows
+
+### Auto-Push Mode (Default)
 
 ```typescript
-// 1. Create a job via MCP tool
+// Traditional workflow with auto-push
 enqueue_codex_job({
   goal: "Add TypeScript strict mode",
   context_files: ["tsconfig.json"],
   base_ref: "main"
 })
 
-// 2. Worker claims and executes the job
-// - Creates worktree
-// - Runs Codex
-// - Commits changes
-// - Updates job status
+// Worker automatically:
+// 1. Creates worktree with auto-generated branch (e.g., codex/add-typescript-lm3k9-a1b2c3d4)
+// 2. Runs Codex
+// 3. Commits and pushes changes
+// 4. Updates job status
 
-// 3. Continue conversation if needed
+// Continue conversation if needed
 continue_codex_job({
   id: "job-id",
   prompt: "Also enable noImplicitAny"
 })
+```
+
+### Local-Only Mode (Multiple Jobs per Feature)
+
+```typescript
+// Feature: Comment system with backend and frontend jobs
+enqueue_codex_job({
+  goal: "Implement comment API endpoints",
+  context_files: ["src/api/comments.ts"],
+  branch_name: "feature/comment-system",
+  push_mode: "never",
+  feature_id: "comment-system",
+  feature_part: "backend"
+})
+
+enqueue_codex_job({
+  goal: "Add comment UI components",
+  context_files: ["src/components/Comment.tsx"],
+  branch_name: "feature/comment-system",
+  push_mode: "never",
+  feature_id: "comment-system",
+  feature_part: "frontend"
+})
+
+// Worker executes both jobs:
+// 1. Shares the same worktree (feature/comment-system)
+// 2. Each job commits changes to the same branch
+// 3. No automatic push (push_mode: "never")
+
+// Review locally, then push and create PR manually:
+// cd worktrees/feature-comment-system
+// git push -u origin feature/comment-system
+// gh pr create
+```
+
+### Feature-ID Based Branch
+
+```typescript
+// Auto-generates branch as feature/<feature_id>
+enqueue_codex_job({
+  goal: "Add user authentication",
+  context_files: ["src/auth/"],
+  feature_id: "user-auth",
+  push_mode: "never"
+})
+
+// Creates branch: feature/user-auth
+// Commits locally without pushing
 ```
 
 ## Development

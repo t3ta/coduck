@@ -12,6 +12,7 @@ type JobRow = {
   worker_type: string;
   feature_id: string | null;
   feature_part: string | null;
+  push_mode: string | null;
   status: JobStatus;
   spec_json: string;
   result_summary: string | null;
@@ -31,13 +32,14 @@ const JOB_COLUMNS = [
   'worker_type',
   'feature_id',
   'feature_part',
+  'push_mode',
   'status',
   'spec_json',
   'result_summary',
   'conversation_id',
   'created_at',
   'updated_at',
-].join(', ');
+].join(', ');;
 
 const serializeResultSummary = (value: unknown): string | null => {
   if (value === undefined || value === null) {
@@ -55,13 +57,14 @@ const deserializeJob = (row: JobRow): Job => ({
   worker_type: row.worker_type,
   feature_id: row.feature_id,
   feature_part: row.feature_part,
+  push_mode: (row.push_mode as 'always' | 'never') ?? 'always',
   status: row.status,
   spec_json: JSON.parse(row.spec_json),
   result_summary: row.result_summary,
   conversation_id: row.conversation_id,
   created_at: row.created_at,
   updated_at: row.updated_at,
-});
+});;
 
 const PROTECTED_STATUSES: ReadonlySet<JobStatus> = new Set(['running', 'awaiting_input']);
 const DEFAULT_BULK_DELETE_STATUSES: JobStatus[] = ['done', 'failed', 'cancelled'];
@@ -81,13 +84,14 @@ export const createJob = (job: CreateJobInput): Job => {
       worker_type,
       feature_id,
       feature_part,
+      push_mode,
       status,
       spec_json,
       result_summary,
       conversation_id,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   insert.run(
@@ -99,6 +103,7 @@ export const createJob = (job: CreateJobInput): Job => {
     job.worker_type,
     job.feature_id ?? null,
     job.feature_part ?? null,
+    job.push_mode ?? 'always',
     job.status,
     JSON.stringify(job.spec_json),
     job.result_summary ?? null,
@@ -113,7 +118,7 @@ export const createJob = (job: CreateJobInput): Job => {
     created_at: now,
     updated_at: now,
   };
-};
+};;
 
 export const getJob = (id: string): Job | null => {
   const db = getDb();

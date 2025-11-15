@@ -206,12 +206,16 @@ export class CodexWorker {
       const commitHash = await this.commitChanges(worktreeContext.path, job.id);
       summary.commit_hash = commitHash ?? null;
 
-      if (commitHash) {
+      if (commitHash && job.push_mode !== 'never') {
         await this.pushBranch(worktreeContext.path, job.branch_name);
         summary.pushed = true;
       } else {
         summary.pushed = false;
-        console.log(`Job ${job.id}: No changes detected, skipping push.`);
+        if (!commitHash) {
+          console.log(`Job ${job.id}: No changes detected, skipping push.`);
+        } else if (job.push_mode === 'never') {
+          console.log(`Job ${job.id}: push_mode is 'never', skipping push.`);
+        }
       }
 
       const testsPassed = await this.runTests(worktreeContext.path);

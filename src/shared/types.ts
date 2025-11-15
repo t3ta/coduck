@@ -17,6 +17,7 @@ export interface Job {
   worker_type: string;
   feature_id?: string | null;
   feature_part?: string | null;
+  push_mode?: 'always' | 'never';
   status: JobStatus;
   spec_json: SpecJson;
   result_summary: string | null;

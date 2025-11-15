@@ -136,4 +136,96 @@ describe('CodexWorker handleJob', () => {
     expect(summary.message).toBe('Codex is awaiting additional input before proceeding.');
     expect(cleanup.mock.calls.length).toBe(0);
   });
+
+  describe('handleJob with push_mode', () => {
+    it('skips push when push_mode is "never"', async () => {
+      const cleanup = jest.fn().mockResolvedValue(undefined);
+      const createWorktree = jest.fn().mockResolvedValue({
+        path: '/tmp/worktree',
+        branchName: 'feature/task',
+        cleanup,
+      });
+      const executeCodex = jest.fn().mockResolvedValue({ success: true, conversationId: 'conv-123' });
+      const pushBranch = jest.fn().mockResolvedValue(undefined);
+      const completeJob = jest.fn().mockResolvedValue(undefined);
+
+      const worker = new CodexWorker({ fetchImpl: jest.fn(), createWorktree, executeCodex });
+
+      (worker as any).ensureRepoPath = jest.fn().mockResolvedValue('/tmp/repo');
+      (worker as any).resolveWorktreePath = jest.fn().mockResolvedValue('/tmp/worktree');
+      (worker as any).commitChanges = jest.fn().mockResolvedValue('abc123');
+      (worker as any).pushBranch = pushBranch;
+      (worker as any).runTests = jest.fn().mockResolvedValue(true);
+      (worker as any).completeJob = completeJob;
+
+      await (worker as any).handleJob(createJob({ push_mode: 'never' }));
+
+      expect(pushBranch.mock.calls.length).toBe(0);
+      expect(completeJob.mock.calls.length).toBe(1);
+      const [, status, summary] = completeJob.mock.calls[0];
+      expect(status).toBe('done');
+      expect(summary.commit_hash).toBe('abc123');
+      expect(summary.pushed).toBe(false);
+    });
+
+    it('pushes changes when push_mode is "always"', async () => {
+      const cleanup = jest.fn().mockResolvedValue(undefined);
+      const createWorktree = jest.fn().mockResolvedValue({
+        path: '/tmp/worktree',
+        branchName: 'feature/task',
+        cleanup,
+      });
+      const executeCodex = jest.fn().mockResolvedValue({ success: true, conversationId: 'conv-123' });
+      const pushBranch = jest.fn().mockResolvedValue(undefined);
+      const completeJob = jest.fn().mockResolvedValue(undefined);
+
+      const worker = new CodexWorker({ fetchImpl: jest.fn(), createWorktree, executeCodex });
+
+      (worker as any).ensureRepoPath = jest.fn().mockResolvedValue('/tmp/repo');
+      (worker as any).resolveWorktreePath = jest.fn().mockResolvedValue('/tmp/worktree');
+      (worker as any).commitChanges = jest.fn().mockResolvedValue('abc123');
+      (worker as any).pushBranch = pushBranch;
+      (worker as any).runTests = jest.fn().mockResolvedValue(true);
+      (worker as any).completeJob = completeJob;
+
+      await (worker as any).handleJob(createJob({ push_mode: 'always' }));
+
+      expect(pushBranch.mock.calls.length).toBe(1);
+      expect(completeJob.mock.calls.length).toBe(1);
+      const [, status, summary] = completeJob.mock.calls[0];
+      expect(status).toBe('done');
+      expect(summary.commit_hash).toBe('abc123');
+      expect(summary.pushed).toBe(true);
+    });
+
+    it('skips push when there are no changes regardless of push_mode', async () => {
+      const cleanup = jest.fn().mockResolvedValue(undefined);
+      const createWorktree = jest.fn().mockResolvedValue({
+        path: '/tmp/worktree',
+        branchName: 'feature/task',
+        cleanup,
+      });
+      const executeCodex = jest.fn().mockResolvedValue({ success: true, conversationId: 'conv-123' });
+      const pushBranch = jest.fn().mockResolvedValue(undefined);
+      const completeJob = jest.fn().mockResolvedValue(undefined);
+
+      const worker = new CodexWorker({ fetchImpl: jest.fn(), createWorktree, executeCodex });
+
+      (worker as any).ensureRepoPath = jest.fn().mockResolvedValue('/tmp/repo');
+      (worker as any).resolveWorktreePath = jest.fn().mockResolvedValue('/tmp/worktree');
+      (worker as any).commitChanges = jest.fn().mockResolvedValue(null);
+      (worker as any).pushBranch = pushBranch;
+      (worker as any).runTests = jest.fn().mockResolvedValue(true);
+      (worker as any).completeJob = completeJob;
+
+      await (worker as any).handleJob(createJob({ push_mode: 'always' }));
+
+      expect(pushBranch.mock.calls.length).toBe(0);
+      expect(completeJob.mock.calls.length).toBe(1);
+      const [, status, summary] = completeJob.mock.calls[0];
+      expect(status).toBe('done');
+      expect(summary.commit_hash).toBeNull();
+      expect(summary.pushed).toBe(false);
+    });
+  });
 });
