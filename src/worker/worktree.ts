@@ -99,17 +99,26 @@ export async function createWorktree(
     // Create new worktree
     await runGit(['fetch', '--all'], { cwd: resolvedRepoPath });
 
-    // Check if branch already exists
-    const branchCheckResult = await runGit(['show-ref', '--verify', `refs/heads/${branchName}`], { cwd: resolvedRepoPath })
+    // Check if branch already exists locally
+    const localBranchResult = await runGit(['show-ref', '--verify', `refs/heads/${branchName}`], { cwd: resolvedRepoPath })
       .catch(() => null);
-    const branchExists = branchCheckResult !== null;
+    const localBranchExists = localBranchResult !== null;
 
-    if (branchExists) {
-      // Branch exists - checkout without resetting
-      console.log(`Branch ${branchName} exists, creating worktree from existing branch`);
+    // Check if branch exists on remote
+    const remoteBranchResult = await runGit(['show-ref', '--verify', `refs/remotes/origin/${branchName}`], { cwd: resolvedRepoPath })
+      .catch(() => null);
+    const remoteBranchExists = remoteBranchResult !== null;
+
+    if (localBranchExists) {
+      // Local branch exists - checkout without resetting
+      console.log(`Local branch ${branchName} exists, creating worktree from existing branch`);
       await runGit(['worktree', 'add', resolvedWorktreePath, branchName], { cwd: resolvedRepoPath });
+    } else if (remoteBranchExists) {
+      // Remote branch exists but no local - create local tracking branch
+      console.log(`Remote branch origin/${branchName} exists, creating worktree with tracking branch`);
+      await runGit(['worktree', 'add', '-b', branchName, resolvedWorktreePath, `origin/${branchName}`], { cwd: resolvedRepoPath });
     } else {
-      // Branch doesn't exist - create from baseRef
+      // Branch doesn't exist anywhere - create from baseRef
       console.log(`Branch ${branchName} doesn't exist, creating from ${baseRef}`);
       await runGit(['worktree', 'add', '-B', branchName, resolvedWorktreePath, baseRef], { cwd: resolvedRepoPath });
     }
