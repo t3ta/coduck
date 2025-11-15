@@ -3,7 +3,7 @@ import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
-import { OrchestratorClient, type ListJobsFilter } from '../orchestrator-client.js';
+import { OrchestratorClient, type CleanupJobsOptions, type ListJobsFilter } from '../orchestrator-client.js';
 import type { Job, JobStatus } from '../../shared/types.js';
 import {
   callCodex,
@@ -13,9 +13,11 @@ import {
   extractConversationId,
   extractLatestSessionId,
 } from '../../shared/codex-mcp.js';
+import { removeWorktree } from '../../worker/worktree.js';
 
 const JOB_STATUSES = ['pending', 'running', 'awaiting_input', 'done', 'failed', 'cancelled'] as const;
 type _JobStatusCoverageCheck = Exclude<JobStatus, (typeof JOB_STATUSES)[number]> extends never ? true : never;
+const PROTECTED_STATUSES = new Set<JobStatus>(['running', 'awaiting_input']);
 
 const enqueueCodexJobSchema = z.object({
   goal: z.string().min(1, 'A goal is required for every job.'),
@@ -31,6 +33,15 @@ const listJobsSchema = z.object({
 
 const getJobSchema = z.object({
   id: z.string().min(1, 'Job ID is required.'),
+});
+
+const deleteJobSchema = z.object({
+  id: z.string().min(1, 'Job ID is required.'),
+});
+
+const cleanupJobsSchema = z.object({
+  statuses: z.array(z.enum(JOB_STATUSES)).min(1).optional(),
+  maxAgeDays: z.number().int().nonnegative().optional(),
 });
 
 const continueCodexJobSchema = z.object({
@@ -105,6 +116,21 @@ const normalizeListFilter = (input: z.infer<typeof listJobsSchema>): ListJobsFil
   return filter;
 };
 
+const sanitizeCleanupOptions = (options: z.infer<typeof cleanupJobsSchema>): CleanupJobsOptions => {
+  const sanitized: CleanupJobsOptions = {};
+
+  if (options.statuses?.length) {
+    const allowed = options.statuses.filter((status) => !PROTECTED_STATUSES.has(status));
+    sanitized.statuses = allowed;
+  }
+
+  if (typeof options.maxAgeDays === 'number') {
+    sanitized.maxAgeDays = options.maxAgeDays;
+  }
+
+  return sanitized;
+};
+
 const buildConversationHistory = (job: Job): string => {
   const summary = parseResultSummary(job.result_summary);
   const continuations = Array.isArray(summary.continuations)
@@ -158,6 +184,55 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
     const job = await orchestratorClient.getJob(args.id.trim());
     const summary = `Fetched job ${job.id}\n\n${formatJob(job)}`;
     return createTextResult(summary, { job });
+  });
+
+  server.registerTool('delete_job', {
+    title: 'Delete Job',
+    description: 'Delete a single job by ID. Cannot delete jobs that are running or awaiting input.',
+    inputSchema: deleteJobSchema,
+  }, async (args) => {
+    const jobId = args.id.trim();
+    const targetJob = await orchestratorClient.getJob(jobId);
+    if (PROTECTED_STATUSES.has(targetJob.status)) {
+      throw new Error(`Job ${jobId} is ${targetJob.status} and cannot be deleted.`);
+    }
+
+    const job = await orchestratorClient.deleteJob(jobId);
+    try {
+      await removeWorktree(job.worktree_path);
+    } catch (error) {
+      console.warn(`Failed to remove worktree ${job.worktree_path}:`, error);
+    }
+    const summary = `Deleted job ${job.id}\n\n${formatJob(job)}`;
+    return createTextResult(summary, { job });
+  });
+
+  server.registerTool('cleanup_jobs', {
+    title: 'Cleanup Jobs',
+    description: 'Delete multiple jobs based on status and age filters. Protected statuses (running, awaiting_input) are automatically excluded.',
+    inputSchema: cleanupJobsSchema,
+  }, async (args) => {
+    const sanitizedOptions = sanitizeCleanupOptions(args);
+    const excludedStatuses = args.statuses?.filter((status) => PROTECTED_STATUSES.has(status)) ?? [];
+
+    const result = await orchestratorClient.cleanupJobs(sanitizedOptions);
+    const jobList = result.jobs.length ? result.jobs.map((job) => formatJob(job)).join('\n\n') : 'No jobs deleted.';
+    const worktreePaths = [...new Set(result.jobs.map((job) => job.worktree_path))];
+    for (const worktreePath of worktreePaths) {
+      try {
+        await removeWorktree(worktreePath);
+      } catch (error) {
+        console.warn(`Failed to remove worktree ${worktreePath}:`, error);
+      }
+    }
+
+    const parts = [`Deleted ${result.deleted} job(s).`];
+    if (excludedStatuses.length) {
+      parts.push(`Excluded protected statuses: ${excludedStatuses.join(', ')}`);
+    }
+    parts.push('', jobList);
+
+    return createTextResult(parts.join('\n\n'), { deleted: result.deleted, jobs: result.jobs });
   });
 
   server.registerTool('continue_codex_job', {

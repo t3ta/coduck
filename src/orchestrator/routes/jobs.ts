@@ -2,7 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import type { JobStatus, SpecJson } from '../../shared/types.js';
-import { claimJob, createJob, getJob, listJobs, updateJobStatus } from '../models/job.js';
+import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJobStatus } from '../models/job.js';
+import { removeWorktree } from '../worker/worktree.js';
 
 const jobStatusEnum = z.enum(['pending', 'running', 'awaiting_input', 'done', 'failed', 'cancelled']);
 
@@ -39,6 +40,11 @@ const completeJobSchema = z.object({
   status: z.enum(['done', 'failed', 'awaiting_input']),
   result_summary: z.unknown().optional(),
   conversation_id: z.string().nullable().optional(),
+});
+
+const cleanupJobsSchema = z.object({
+  statuses: z.array(jobStatusEnum).optional(),
+  maxAgeDays: z.number().int().nonnegative().optional(),
 });
 
 const toFilterValue = (value: unknown): string | undefined => {
@@ -103,6 +109,26 @@ router.get('/:id', (req, res, next) => {
   }
 });
 
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const job = deleteJob(req.params.id);
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    try {
+      await removeWorktree(job.worktree_path);
+    } catch (error) {
+      console.warn(`Failed to remove worktree ${job.worktree_path}:`, error);
+    }
+    res.status(200).json(job);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Cannot delete job')) {
+      return res.status(400).json({ error: error.message });
+    }
+    next(error);
+  }
+});
+
 router.post('/claim', (req, res, next) => {
   try {
     const { worker_type } = claimJobQuerySchema.parse(req.query);
@@ -113,6 +139,24 @@ router.post('/claim', (req, res, next) => {
     }
 
     res.status(200).json(job);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/cleanup', async (req, res, next) => {
+  try {
+    const payload = cleanupJobsSchema.parse(req.body ?? {});
+    const result = deleteJobs(payload);
+    const worktreePaths = [...new Set(result.deleted.map((job) => job.worktree_path))];
+    for (const worktreePath of worktreePaths) {
+      try {
+        await removeWorktree(worktreePath);
+      } catch (error) {
+        console.warn(`Failed to remove worktree ${worktreePath}:`, error);
+      }
+    }
+    res.status(200).json({ deleted: result.count, jobs: result.deleted });
   } catch (error) {
     next(error);
   }

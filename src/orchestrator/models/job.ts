@@ -42,6 +42,10 @@ const deserializeJob = (row: JobRow): Job => ({
   updated_at: row.updated_at,
 });
 
+const PROTECTED_STATUSES: ReadonlySet<JobStatus> = new Set(['running', 'awaiting_input']);
+const DEFAULT_BULK_DELETE_STATUSES: JobStatus[] = ['done', 'failed', 'cancelled'];
+const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
+
 export const createJob = (job: CreateJobInput): Job => {
   const db = getDb();
   const now = new Date().toISOString();
@@ -176,4 +180,65 @@ export const claimJob = (worker_type: string): Job | null => {
   });
 
   return transaction(worker_type);
+};
+
+export const deleteJob = (id: string): Job | null => {
+  const db = getDb();
+  const transaction = db.transaction((jobId: string): Job | null => {
+    const selectStmt = db.prepare('SELECT * FROM jobs WHERE id = ?');
+    const row = selectStmt.get(jobId) as JobRow | undefined;
+    if (!row) return null;
+
+    if (PROTECTED_STATUSES.has(row.status)) {
+      throw new Error(`Cannot delete job ${jobId} while status is ${row.status}`);
+    }
+
+    const deleteStmt = db.prepare('DELETE FROM jobs WHERE id = ?');
+    deleteStmt.run(jobId);
+
+    return deserializeJob(row);
+  });
+
+  return transaction(id);
+};
+
+export const deleteJobs = (filter: { statuses?: JobStatus[]; maxAgeDays?: number } = {}): { deleted: Job[]; count: number } => {
+  const db = getDb();
+  const statuses = (filter.statuses ?? DEFAULT_BULK_DELETE_STATUSES).filter((status) => !PROTECTED_STATUSES.has(status));
+
+  if (statuses.length === 0) {
+    return { deleted: [], count: 0 };
+  }
+
+  const cutoffIso =
+    filter.maxAgeDays !== undefined
+      ? new Date(Date.now() - filter.maxAgeDays * MILLISECONDS_PER_DAY).toISOString()
+      : undefined;
+
+  const transaction = db.transaction((statusesForDelete: JobStatus[], cutoff?: string) => {
+    const conditions = [`status IN (${statusesForDelete.map(() => '?').join(', ')})`];
+    const params: Array<string> = [...statusesForDelete];
+
+    if (cutoff) {
+      conditions.push('datetime(created_at) <= datetime(?)');
+      params.push(cutoff);
+    }
+
+    const selectStmt = db.prepare(`SELECT * FROM jobs WHERE ${conditions.join(' AND ')} ORDER BY datetime(created_at) ASC`);
+    const rows = selectStmt.all(...params) as JobRow[];
+
+    if (!rows.length) {
+      return { deleted: [], count: 0 };
+    }
+
+    const deleteStmt = db.prepare('DELETE FROM jobs WHERE id = ?');
+    for (const row of rows) {
+      deleteStmt.run(row.id);
+    }
+
+    const deleted = rows.map(deserializeJob);
+    return { deleted, count: deleted.length };
+  });
+
+  return transaction(statuses, cutoffIso);
 };

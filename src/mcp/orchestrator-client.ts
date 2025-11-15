@@ -74,6 +74,11 @@ export interface ListJobsFilter {
   worker_type?: string;
 }
 
+export interface CleanupJobsOptions {
+  statuses?: JobStatus[];
+  maxAgeDays?: number;
+}
+
 export interface OrchestratorClientOptions {
   baseUrl?: string;
   worktreeBaseDir?: string;
@@ -143,6 +148,17 @@ export class OrchestratorClient {
     return this.request<Job>(`/jobs/${encodeURIComponent(id)}`);
   }
 
+  async deleteJob(id: string): Promise<Job> {
+    const trimmedId = id.trim();
+    if (!trimmedId) {
+      throw new Error('Job ID is required');
+    }
+
+    return this.request<Job>(`/jobs/${encodeURIComponent(trimmedId)}`, {
+      method: 'DELETE',
+    });
+  }
+
   async updateJobStatus(
     id: string,
     status: JobStatus,
@@ -162,6 +178,23 @@ export class OrchestratorClient {
     }
 
     return this.request<Job>(`/jobs/${encodeURIComponent(trimmedId)}/complete`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
+  async cleanupJobs(options?: CleanupJobsOptions): Promise<{ deleted: number; jobs: Job[] }> {
+    const body: Record<string, unknown> = {};
+
+    if (options?.statuses !== undefined) {
+      body.statuses = options.statuses;
+    }
+
+    if (typeof options?.maxAgeDays === 'number') {
+      body.maxAgeDays = options.maxAgeDays;
+    }
+
+    return this.request<{ deleted: number; jobs: Job[] }>(`/jobs/cleanup`, {
       method: 'POST',
       body: JSON.stringify(body),
     });
