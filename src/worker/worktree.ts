@@ -78,7 +78,18 @@ export async function createWorktree(
     console.log(`Reusing existing worktree at ${resolvedWorktreePath}`);
     await runGit(['fetch', '--all'], { cwd: resolvedWorktreePath });
     await runGit(['checkout', branchName], { cwd: resolvedWorktreePath });
-    await runGit(['pull', '--rebase'], { cwd: resolvedWorktreePath });
+
+    // Only pull if branch has upstream tracking
+    const hasUpstream = await runGit(['rev-parse', '--abbrev-ref', '@{u}'], { cwd: resolvedWorktreePath })
+      .then(() => true)
+      .catch(() => false);
+
+    if (hasUpstream) {
+      await runGit(['pull', '--rebase'], { cwd: resolvedWorktreePath });
+      console.log(`Pulled latest changes from upstream`);
+    } else {
+      console.log(`Branch has no upstream, skipping pull`);
+    }
   } else {
     // Create new worktree
     await runGit(['fetch', '--all'], { cwd: resolvedRepoPath });
