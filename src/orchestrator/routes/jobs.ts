@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import type { JobStatus, SpecJson } from '../../shared/types.js';
 import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJobStatus } from '../models/job.js';
+import { removeWorktree } from '../worker/worktree.js';
 
 const jobStatusEnum = z.enum(['pending', 'running', 'awaiting_input', 'done', 'failed', 'cancelled']);
 
@@ -108,11 +109,16 @@ router.get('/:id', (req, res, next) => {
   }
 });
 
-router.delete('/:id', (req, res, next) => {
+router.delete('/:id', async (req, res, next) => {
   try {
     const job = deleteJob(req.params.id);
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
+    }
+    try {
+      await removeWorktree(job.worktree_path);
+    } catch (error) {
+      console.warn(`Failed to remove worktree ${job.worktree_path}:`, error);
     }
     res.status(200).json(job);
   } catch (error) {
@@ -138,10 +144,18 @@ router.post('/claim', (req, res, next) => {
   }
 });
 
-router.post('/cleanup', (req, res, next) => {
+router.post('/cleanup', async (req, res, next) => {
   try {
     const payload = cleanupJobsSchema.parse(req.body ?? {});
     const result = deleteJobs(payload);
+    const worktreePaths = [...new Set(result.deleted.map((job) => job.worktree_path))];
+    for (const worktreePath of worktreePaths) {
+      try {
+        await removeWorktree(worktreePath);
+      } catch (error) {
+        console.warn(`Failed to remove worktree ${worktreePath}:`, error);
+      }
+    }
     res.status(200).json({ deleted: result.count, jobs: result.deleted });
   } catch (error) {
     next(error);
