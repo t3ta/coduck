@@ -194,4 +194,42 @@ describe('orchestrator job routes', () => {
       expect(jobs).toHaveLength(2);
     });
   });
+
+  describe('POST /jobs with push_mode', () => {
+    it('creates jobs with push_mode="always"', async () => {
+      const payload = createJobPayload({ push_mode: 'always' });
+      const response = await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      expect(response.status).toBe(201);
+      const job = (await response.json()) as Job;
+      expect(job.push_mode).toBe('always');
+    });
+
+    it('creates jobs with push_mode="never"', async () => {
+      const payload = createJobPayload({ push_mode: 'never' });
+      const response = await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      expect(response.status).toBe(201);
+      const job = (await response.json()) as Job;
+      expect(job.push_mode).toBe('never');
+    });
+
+    it('defaults to push_mode="always" when not specified', async () => {
+      const payload = createJobPayload();
+      const response = await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      expect(response.status).toBe(201);
+      const job = (await response.json()) as Job;
+      expect(job.push_mode).toBe('always');
+    });
+  });
 });

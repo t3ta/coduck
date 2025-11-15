@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import path from 'node:path';
 
 import { appConfig } from '../shared/config.js';
@@ -67,8 +67,10 @@ export interface EnqueueCodexJobArgs {
   context_files: string[];
   notes?: string;
   base_ref?: string;
+  branch_name?: string;
   feature_id?: string;
   feature_part?: string;
+  push_mode?: 'always' | 'never';
 }
 
 export interface ListJobsFilter {
@@ -114,22 +116,40 @@ export class OrchestratorClient {
 
   async enqueueCodexJob(args: EnqueueCodexJobArgs): Promise<Job> {
     const baseRef = args.base_ref?.trim() || DEFAULT_BASE_REF;
-    const metadata = this.generateJobMetadata(args.goal);
     const specPayload: SpecJson = {
       goal: args.goal,
       context_files: args.context_files,
       ...(args.notes ? { notes: args.notes } : {}),
     };
 
+    // Determine branch_name: explicit > feature_id > auto-generated
+    let branchName: string;
+    if (args.branch_name?.trim()) {
+      branchName = args.branch_name.trim();
+    } else if (args.feature_id?.trim()) {
+      // Sanitize feature_id for use as git ref (same logic as generateJobMetadata)
+      const sanitizedFeatureId = args.feature_id
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      // Fall back to auto-generated branch if sanitized feature_id is empty
+      branchName = sanitizedFeatureId ? `feature/${sanitizedFeatureId}` : this.generateJobMetadata(args.goal).branchName;
+    } else {
+      branchName = this.generateJobMetadata(args.goal).branchName;
+    }
+
+    const worktreePath = this.resolveWorktreePath(branchName);
+
     const body = {
-      repo_url: metadata.repoUrl,
+      repo_url: this.repoUrl,
       base_ref: baseRef,
-      branch_name: metadata.branchName,
-      worktree_path: metadata.worktreePath,
+      branch_name: branchName,
+      worktree_path: worktreePath,
       worker_type: WORKER_TYPE_CODEX,
       spec_json: specPayload,
       feature_id: args.feature_id,
       feature_part: args.feature_part,
+      push_mode: args.push_mode ?? 'always',
     };
 
     return this.request<Job>('/jobs', {
@@ -234,6 +254,16 @@ export class OrchestratorClient {
     }
 
     return (data ?? null) as T;
+  }
+
+  private resolveWorktreePath(branchName: string): string {
+    // Include repo hash to namespace worktrees by repository
+    const repoHash = createHash('sha1').update(this.repoUrl).digest('hex').slice(0, 8);
+    // Include branch hash to avoid collisions between branches that differ only in slashes vs dashes
+    const branchHash = createHash('sha1').update(branchName).digest('hex').slice(0, 8);
+    const sanitizedBranch = branchName.replace(/[\\/]/g, '-').slice(0, 64);
+    const worktreeDir = `${repoHash}-${sanitizedBranch}-${branchHash}`;
+    return path.resolve(this.worktreeBaseDir, worktreeDir);
   }
 
   private generateJobMetadata(goal: string): JobMetadata {

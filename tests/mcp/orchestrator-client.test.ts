@@ -227,4 +227,180 @@ describe('OrchestratorClient', () => {
       expect((url as URL).searchParams.has('feature_id')).toBe(false);
     });
   });
+
+  describe('enqueueCodexJob with branch_name and push_mode', () => {
+    it('uses explicit branch_name when provided', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(createJobResponse({ branch_name: 'feature/my-branch' })),
+      });
+
+      const client = new OrchestratorClient({
+        baseUrl: 'http://localhost:5555',
+        repoUrl: 'https://example.com/repo.git',
+        worktreeBaseDir: '/worktrees',
+        fetchImpl: fetchMock,
+      });
+
+      await client.enqueueCodexJob({
+        goal: 'Implement feature',
+        context_files: ['src/index.ts'],
+        branch_name: 'feature/my-branch',
+      });
+
+      const [, init] = fetchMock.mock.calls[0];
+      const body = JSON.parse((init?.body as string) ?? '{}');
+      expect(body.branch_name).toBe('feature/my-branch');
+      expect(body.worktree_path).toContain('feature-my-branch');
+    });
+
+    it('generates branch_name from feature_id when only feature_id is provided', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(createJobResponse({ branch_name: 'feature/user-auth' })),
+      });
+
+      const client = new OrchestratorClient({
+        baseUrl: 'http://localhost:5555',
+        repoUrl: 'https://example.com/repo.git',
+        worktreeBaseDir: '/worktrees',
+        fetchImpl: fetchMock,
+      });
+
+      await client.enqueueCodexJob({
+        goal: 'Add authentication',
+        context_files: ['src/auth.ts'],
+        feature_id: 'user-auth',
+      });
+
+      const [, init] = fetchMock.mock.calls[0];
+      const body = JSON.parse((init?.body as string) ?? '{}');
+      expect(body.branch_name).toBe('feature/user-auth');
+    });
+
+    it('auto-generates branch_name when neither branch_name nor feature_id is provided', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(createJobResponse()),
+      });
+
+      const client = new OrchestratorClient({
+        baseUrl: 'http://localhost:5555',
+        repoUrl: 'https://example.com/repo.git',
+        worktreeBaseDir: '/worktrees',
+        fetchImpl: fetchMock,
+      });
+
+      await client.enqueueCodexJob({
+        goal: 'Implement feature',
+        context_files: ['src/index.ts'],
+      });
+
+      const [, init] = fetchMock.mock.calls[0];
+      const body = JSON.parse((init?.body as string) ?? '{}');
+      expect(body.branch_name.startsWith('codex/')).toBe(true);
+    });
+
+    it('sanitizes feature_id containing spaces and special characters', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(createJobResponse()),
+      });
+
+      const client = new OrchestratorClient({
+        baseUrl: 'http://localhost:5555',
+        repoUrl: 'https://example.com/repo.git',
+        worktreeBaseDir: '/worktrees',
+        fetchImpl: fetchMock,
+      });
+
+      await client.enqueueCodexJob({
+        goal: 'Add authentication',
+        context_files: ['src/auth.ts'],
+        feature_id: 'User Auth?:Test',
+      });
+
+      const [, init] = fetchMock.mock.calls[0];
+      const body = JSON.parse((init?.body as string) ?? '{}');
+      expect(body.branch_name).toBe('feature/user-auth-test');
+    });
+
+    it('falls back to auto-generated branch when feature_id becomes empty after sanitization', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(createJobResponse()),
+      });
+
+      const client = new OrchestratorClient({
+        baseUrl: 'http://localhost:5555',
+        repoUrl: 'https://example.com/repo.git',
+        worktreeBaseDir: '/worktrees',
+        fetchImpl: fetchMock,
+      });
+
+      await client.enqueueCodexJob({
+        goal: 'Implement feature',
+        context_files: ['src/index.ts'],
+        feature_id: '🚀',
+      });
+
+      const [, init] = fetchMock.mock.calls[0];
+      const body = JSON.parse((init?.body as string) ?? '{}');
+      expect(body.branch_name.startsWith('codex/')).toBe(true);
+    });
+
+    it('sends push_mode="never" when specified', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(createJobResponse({ push_mode: 'never' })),
+      });
+
+      const client = new OrchestratorClient({
+        baseUrl: 'http://localhost:5555',
+        repoUrl: 'https://example.com/repo.git',
+        worktreeBaseDir: '/worktrees',
+        fetchImpl: fetchMock,
+      });
+
+      await client.enqueueCodexJob({
+        goal: 'Implement feature',
+        context_files: ['src/index.ts'],
+        push_mode: 'never',
+      });
+
+      const [, init] = fetchMock.mock.calls[0];
+      const body = JSON.parse((init?.body as string) ?? '{}');
+      expect(body.push_mode).toBe('never');
+    });
+
+    it('defaults to push_mode="always" when not specified', async () => {
+      const fetchMock = jest.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(createJobResponse()),
+      });
+
+      const client = new OrchestratorClient({
+        baseUrl: 'http://localhost:5555',
+        repoUrl: 'https://example.com/repo.git',
+        worktreeBaseDir: '/worktrees',
+        fetchImpl: fetchMock,
+      });
+
+      await client.enqueueCodexJob({
+        goal: 'Implement feature',
+        context_files: ['src/index.ts'],
+      });
+
+      const [, init] = fetchMock.mock.calls[0];
+      const body = JSON.parse((init?.body as string) ?? '{}');
+      expect(body.push_mode).toBe('always');
+    });
+  });
 });

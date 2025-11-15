@@ -206,12 +206,16 @@ export class CodexWorker {
       const commitHash = await this.commitChanges(worktreeContext.path, job.id);
       summary.commit_hash = commitHash ?? null;
 
-      if (commitHash) {
+      if (commitHash && job.push_mode !== 'never') {
         await this.pushBranch(worktreeContext.path, job.branch_name);
         summary.pushed = true;
       } else {
         summary.pushed = false;
-        console.log(`Job ${job.id}: No changes detected, skipping push.`);
+        if (!commitHash) {
+          console.log(`Job ${job.id}: No changes detected, skipping push.`);
+        } else if (job.push_mode === 'never') {
+          console.log(`Job ${job.id}: push_mode is 'never', skipping push.`);
+        }
       }
 
       const testsPassed = await this.runTests(worktreeContext.path);
@@ -232,11 +236,25 @@ export class CodexWorker {
 
     try {
       if (success) {
-        await this.completeJob(job.id, 'done', summary, conversationId);
-        if (worktreeContext) {
-          await worktreeContext.cleanup();
+        // Clean up worktree BEFORE marking job as done to prevent race conditions
+        if (worktreeContext && job.push_mode !== 'never') {
+          try {
+            await worktreeContext.cleanup();
+            console.log(`Job ${job.id}: Worktree cleaned up.`);
+          } catch (cleanupError) {
+            const message = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+            console.warn(`Job ${job.id}: Worktree cleanup failed - ${message}`);
+            summary.cleanup_error = message;
+          }
         }
-        console.log(`Job ${job.id} completed.`);
+
+        await this.completeJob(job.id, 'done', summary, conversationId);
+
+        if (worktreeContext && job.push_mode === 'never') {
+          console.log(`Job ${job.id} completed. Worktree preserved (push_mode='never').`);
+        } else {
+          console.log(`Job ${job.id} completed.`);
+        }
       } else {
         await this.completeJob(job.id, 'failed', summary, conversationId);
         console.log(`Job ${job.id} reported as failed.`);

@@ -69,8 +69,60 @@ export async function createWorktree(
 
   await fs.mkdir(path.dirname(resolvedWorktreePath), { recursive: true });
 
-  await runGit(['fetch', '--all'], { cwd: resolvedRepoPath });
-  await runGit(['worktree', 'add', '-B', branchName, resolvedWorktreePath, baseRef], { cwd: resolvedRepoPath });
+  // Check if worktree already exists
+  const worktreeExists = await pathExists(resolvedWorktreePath);
+  const gitFileExists = worktreeExists && await pathExists(path.join(resolvedWorktreePath, '.git'));
+
+  if (worktreeExists && gitFileExists) {
+    // Reuse existing worktree
+    console.log(`Reusing existing worktree at ${resolvedWorktreePath}`);
+
+    // Clean up any uncommitted changes or untracked files from previous jobs
+    await runGit(['reset', '--hard'], { cwd: resolvedWorktreePath });
+    await runGit(['clean', '-fd'], { cwd: resolvedWorktreePath });
+
+    await runGit(['fetch', '--all'], { cwd: resolvedWorktreePath });
+    await runGit(['checkout', branchName], { cwd: resolvedWorktreePath });
+
+    // Only pull if branch has upstream tracking
+    const hasUpstream = await runGit(['rev-parse', '--abbrev-ref', '@{u}'], { cwd: resolvedWorktreePath })
+      .then(() => true)
+      .catch(() => false);
+
+    if (hasUpstream) {
+      await runGit(['pull', '--rebase'], { cwd: resolvedWorktreePath });
+      console.log(`Pulled latest changes from upstream`);
+    } else {
+      console.log(`Branch has no upstream, skipping pull`);
+    }
+  } else {
+    // Create new worktree
+    await runGit(['fetch', '--all'], { cwd: resolvedRepoPath });
+
+    // Check if branch already exists locally
+    const localBranchResult = await runGit(['show-ref', '--verify', `refs/heads/${branchName}`], { cwd: resolvedRepoPath })
+      .catch(() => null);
+    const localBranchExists = localBranchResult !== null;
+
+    // Check if branch exists on remote
+    const remoteBranchResult = await runGit(['show-ref', '--verify', `refs/remotes/origin/${branchName}`], { cwd: resolvedRepoPath })
+      .catch(() => null);
+    const remoteBranchExists = remoteBranchResult !== null;
+
+    if (localBranchExists) {
+      // Local branch exists - checkout without resetting
+      console.log(`Local branch ${branchName} exists, creating worktree from existing branch`);
+      await runGit(['worktree', 'add', resolvedWorktreePath, branchName], { cwd: resolvedRepoPath });
+    } else if (remoteBranchExists) {
+      // Remote branch exists but no local - create local tracking branch
+      console.log(`Remote branch origin/${branchName} exists, creating worktree with tracking branch`);
+      await runGit(['worktree', 'add', '-b', branchName, resolvedWorktreePath, `origin/${branchName}`], { cwd: resolvedRepoPath });
+    } else {
+      // Branch doesn't exist anywhere - create from baseRef
+      console.log(`Branch ${branchName} doesn't exist, creating from ${baseRef}`);
+      await runGit(['worktree', 'add', '-B', branchName, resolvedWorktreePath, baseRef], { cwd: resolvedRepoPath });
+    }
+  }
 
   const cleanup = async () => {
     await removeWorktree(resolvedWorktreePath);

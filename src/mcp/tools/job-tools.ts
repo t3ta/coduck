@@ -24,9 +24,11 @@ const enqueueCodexJobSchema = z.object({
   context_files: z.array(z.string().min(1, 'Context file paths cannot be empty.')).min(1, 'Provide at least one context file.'),
   notes: z.string().min(1).optional(),
   base_ref: z.string().min(1).default('origin/main'),
+  branch_name: z.string().min(1, 'Branch name cannot be empty.').optional(),
   feature_id: z.string().min(1, 'Feature ID cannot be empty.').optional(),
   feature_part: z.string().min(1, 'Feature part cannot be empty.').optional(),
-});
+  push_mode: z.enum(['always', 'never']).optional(),
+});;
 
 const listJobsSchema = z.object({
   status: z.enum(JOB_STATUSES).optional(),
@@ -164,8 +166,10 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
       context_files: args.context_files.map((file) => file.trim()),
       notes: args.notes?.trim() || undefined,
       base_ref: args.base_ref?.trim() || undefined,
+      branch_name: args.branch_name?.trim() || undefined,
       feature_id: args.feature_id?.trim() || undefined,
       feature_part: args.feature_part?.trim() || undefined,
+      push_mode: args.push_mode || undefined,
     });
 
     const summary = `Enqueued Codex job ${job.id}\n\n${formatJob(job)}`;

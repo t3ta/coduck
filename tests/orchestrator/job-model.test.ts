@@ -98,6 +98,74 @@ describe('orchestrator job model', () => {
     expect(update).toThrow();
   });
 
+  describe('concurrent job prevention', () => {
+    it('does not claim jobs with same (branch_name, repo_url) as running jobs', () => {
+      const job1 = jobModule.createJob(createJobPayload({ branch_name: 'feature/shared', repo_url: 'https://example.com/repo-a.git' }));
+      const job2 = jobModule.createJob(createJobPayload({ branch_name: 'feature/shared', repo_url: 'https://example.com/repo-a.git' }));
+
+      const claimed1 = jobModule.claimJob('codex');
+      expect(claimed1?.id).toBe(job1.id);
+      expect(claimed1?.status).toBe('running');
+
+      const claimed2 = jobModule.claimJob('codex');
+      expect(claimed2).toBeNull();
+
+      const stored2 = jobModule.getJob(job2.id);
+      expect(stored2?.status).toBe('pending');
+    });
+
+    it('allows concurrent claims for different branch_names', () => {
+      const job1 = jobModule.createJob(createJobPayload({ branch_name: 'feature/branch-a' }));
+      const job2 = jobModule.createJob(createJobPayload({ branch_name: 'feature/branch-b' }));
+
+      const claimed1 = jobModule.claimJob('codex');
+      expect(claimed1?.id).toBe(job1.id);
+
+      const claimed2 = jobModule.claimJob('codex');
+      expect(claimed2?.id).toBe(job2.id);
+      expect(claimed2?.status).toBe('running');
+    });
+
+    it('allows concurrent claims for same branch_name but different repos', () => {
+      const job1 = jobModule.createJob(createJobPayload({ branch_name: 'feature/shared', repo_url: 'https://example.com/repo-a.git' }));
+      const job2 = jobModule.createJob(createJobPayload({ branch_name: 'feature/shared', repo_url: 'https://example.com/repo-b.git' }));
+
+      const claimed1 = jobModule.claimJob('codex');
+      expect(claimed1?.id).toBe(job1.id);
+      expect(claimed1?.status).toBe('running');
+
+      const claimed2 = jobModule.claimJob('codex');
+      expect(claimed2?.id).toBe(job2.id);
+      expect(claimed2?.status).toBe('running');
+    });
+
+    it('allows claiming after running job completes', () => {
+      const job1 = jobModule.createJob(createJobPayload({ branch_name: 'feature/shared' }));
+      const job2 = jobModule.createJob(createJobPayload({ branch_name: 'feature/shared' }));
+
+      jobModule.claimJob('codex');
+      jobModule.updateJobStatus(job1.id, 'done', null, 'running');
+
+      const claimed2 = jobModule.claimJob('codex');
+      expect(claimed2?.id).toBe(job2.id);
+      expect(claimed2?.status).toBe('running');
+    });
+
+    it('does not claim jobs with same (branch_name, repo_url) as awaiting_input jobs', () => {
+      const job1 = jobModule.createJob(createJobPayload({ branch_name: 'feature/shared' }));
+      const job2 = jobModule.createJob(createJobPayload({ branch_name: 'feature/shared' }));
+
+      jobModule.claimJob('codex');
+      jobModule.updateJobStatus(job1.id, 'awaiting_input', { message: 'Need input' }, 'running');
+
+      const claimed2 = jobModule.claimJob('codex');
+      expect(claimed2).toBeNull();
+
+      const stored2 = jobModule.getJob(job2.id);
+      expect(stored2?.status).toBe('pending');
+    });
+  });
+
   describe('feature metadata', () => {
     it('creates jobs with feature_id and feature_part', () => {
       const payload = createJobPayload({
@@ -132,6 +200,48 @@ describe('orchestrator job model', () => {
 
       const allJobs = jobModule.listJobs();
       expect(allJobs).toHaveLength(2);
+    });
+  });
+
+  describe('isWorktreeInUse', () => {
+    it('returns true when worktree is used by existing jobs', () => {
+      const worktreePath = '/tmp/worktree-shared';
+      jobModule.createJob(createJobPayload({ worktree_path: worktreePath, branch_name: 'feature/shared' }));
+      jobModule.createJob(createJobPayload({ worktree_path: worktreePath, branch_name: 'feature/shared' }));
+
+      const inUse = jobModule.isWorktreeInUse(worktreePath);
+      expect(inUse).toBe(true);
+    });
+
+    it('returns false when worktree is not used by any jobs', () => {
+      const inUse = jobModule.isWorktreeInUse('/tmp/worktree-nonexistent');
+      expect(inUse).toBe(false);
+    });
+
+    it('excludes specified job IDs from the check', () => {
+      const worktreePath = '/tmp/worktree-single';
+      const job = jobModule.createJob(createJobPayload({ worktree_path: worktreePath, branch_name: 'feature/single' }));
+
+      const inUseWithExclusion = jobModule.isWorktreeInUse(worktreePath, [job.id]);
+      expect(inUseWithExclusion).toBe(false);
+    });
+
+    it('returns true when other jobs use the worktree even with exclusions', () => {
+      const worktreePath = '/tmp/worktree-multi';
+      const job1 = jobModule.createJob(createJobPayload({ worktree_path: worktreePath, branch_name: 'feature/multi' }));
+      const job2 = jobModule.createJob(createJobPayload({ worktree_path: worktreePath, branch_name: 'feature/multi' }));
+
+      const inUse = jobModule.isWorktreeInUse(worktreePath, [job1.id]);
+      expect(inUse).toBe(true);
+    });
+
+    it('excludes multiple job IDs correctly', () => {
+      const worktreePath = '/tmp/worktree-batch';
+      const job1 = jobModule.createJob(createJobPayload({ worktree_path: worktreePath, branch_name: 'feature/batch' }));
+      const job2 = jobModule.createJob(createJobPayload({ worktree_path: worktreePath, branch_name: 'feature/batch' }));
+
+      const inUse = jobModule.isWorktreeInUse(worktreePath, [job1.id, job2.id]);
+      expect(inUse).toBe(false);
     });
   });
 });

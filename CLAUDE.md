@@ -49,9 +49,9 @@ npx tsc
 
 2. **Worker** (`src/worker/`)
    - Orchestratorをポーリングしてpendingジョブを取得
-   - 各ジョブ用のGitワークツリーを作成（完全に分離された環境）
+   - Gitワークツリーを作成または再利用（同じブランチの場合は既存worktreeを再利用）
    - Codex MCPサーバー経由でCodexを実行
-   - 実行結果をコミット・プッシュ
+   - 実行結果をコミット（push_modeに応じてプッシュ制御）
    - 会話継続時は既存ワークツリーを再利用
 
 3. **MCP Server** (`src/mcp/`)
@@ -106,12 +106,73 @@ Claude Code → MCP Tool → Orchestrator API → SQLite
 - **Strict Mode**: 有効
 - すべてのimportで`.js`拡張子が必要（TypeScript ESMの仕様）
 
-## Gitワークツリーの管理
+## Gitワークツリーとブランチ戦略
+
+### ワークツリーの基本
 
 - デフォルトディレクトリ: `./worktrees/`
-- 各ジョブは`worktrees/job-<id>/`に分離
+- 同じ`branch_name`を持つJobは同じworktreeを共有
 - ワークツリーは手動削除が必要（自動クリーンアップなし）
 - 会話継続時は既存ワークツリーを再利用してコンテキストを保持
+
+### ブランチ名の決定ロジック
+
+`enqueue_codex_job`でブランチ名は以下の優先順で決定されます：
+
+1. **`branch_name`が明示的に指定されている場合**: そのまま使用
+   ```typescript
+   // 例: 複数Jobをfeatureブランチにまとめる
+   branch_name: "feature/navy-comment-system"
+   ```
+
+2. **`feature_id`のみ指定されている場合**: `feature/<feature_id>`を使用
+   ```typescript
+   // feature_id: "navy-comment-system" → branch_name: "feature/navy-comment-system"
+   ```
+
+3. **どちらも未指定の場合**: 自動生成（従来の挙動）
+   ```typescript
+   // codex/<goal-slug>-<timestamp>-<random> 形式
+   // 例: "codex/add-user-auth-lm3k9-a1b2c3d4"
+   ```
+
+### Push制御（`push_mode`）
+
+Jobの`push_mode`フィールドでリモートへのpush挙動を制御できます：
+
+- **`always`**（デフォルト）: 差分があれば自動でgit push
+- **`never`**: コミットまで実行するが、pushはスキップ
+
+#### 使い分け
+
+**フルオートPRモード**（従来の挙動）:
+```typescript
+// branch_name未指定、push_mode='always'（デフォルト）
+// → codex/...ブランチが自動生成され、自動push
+```
+
+**ローカルマージモード**（新機能）:
+```typescript
+// 同じfeatureに複数Jobを積む
+enqueue_codex_job({
+  goal: "バックエンドAPIを実装",
+  branch_name: "feature/navy-comment",
+  push_mode: "never",
+  feature_id: "navy-comment",
+  feature_part: "backend"
+});
+
+enqueue_codex_job({
+  goal: "フロントエンドUIを実装",
+  branch_name: "feature/navy-comment",
+  push_mode: "never",
+  feature_id: "navy-comment",
+  feature_part: "frontend"
+});
+
+// → 同じfeature/navy-commentブランチに2つのJobがcommit
+// → ローカルで確認後、手動でpush & PR作成
+```
 
 ## MCP Server登録
 
