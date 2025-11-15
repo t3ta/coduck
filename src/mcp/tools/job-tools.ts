@@ -5,8 +5,15 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 import { OrchestratorClient, type ListJobsFilter } from '../orchestrator-client.js';
 import type { Job, JobStatus } from '../../shared/types.js';
+import {
+  callCodexReply,
+  collectTextContent,
+  codexResultIndicatesError,
+  extractCodexStatus,
+  extractConversationId,
+} from '../../shared/codex-mcp.js';
 
-const JOB_STATUSES = ['pending', 'running', 'done', 'failed', 'cancelled'] as const;
+const JOB_STATUSES = ['pending', 'running', 'awaiting_input', 'done', 'failed', 'cancelled'] as const;
 type _JobStatusCoverageCheck = Exclude<JobStatus, (typeof JOB_STATUSES)[number]> extends never ? true : never;
 
 const enqueueCodexJobSchema = z.object({
@@ -25,10 +32,28 @@ const getJobSchema = z.object({
   id: z.string().min(1, 'Job ID is required.'),
 });
 
+const continueCodexJobSchema = z.object({
+  id: z.string().min(1, 'Job ID is required.'),
+  prompt: z.string().min(1, 'Provide a follow-up prompt.'),
+});
+
 const createTextResult = (text: string, structuredContent?: Record<string, unknown>): CallToolResult => ({
   content: [{ type: 'text', text }],
   ...(structuredContent ? { structuredContent } : {}),
 });
+
+const parseResultSummary = (value: string | null): Record<string, unknown> => {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    if (parsed && typeof parsed === 'object') {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    return { previous_summary: value };
+  }
+  return { previous_summary: value };
+};
 
 const formatJob = (job: Job): string => {
   const specDetails = [`Goal: ${job.spec_json.goal}`, `Context files: ${job.spec_json.context_files.join(', ') || 'n/a'}`];
@@ -44,6 +69,7 @@ const formatJob = (job: Job): string => {
     `Base ref: ${job.base_ref}`,
     `Branch: ${job.branch_name}`,
     `Worktree: ${job.worktree_path}`,
+    `Conversation: ${job.conversation_id ?? 'n/a'}`,
     `Result: ${job.result_summary ?? 'n/a'}`,
     ...specDetails,
     `Created: ${job.created_at}`,
@@ -116,5 +142,66 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
     const job = await orchestratorClient.getJob(args.id.trim());
     const summary = `Fetched job ${job.id}\n\n${formatJob(job)}`;
     return createTextResult(summary, { job });
+  });
+
+  server.registerTool('continue_codex_job', {
+    title: 'Continue Codex Job',
+    description: 'Respond to Codex when a job is awaiting additional user input.',
+    inputSchema: continueCodexJobSchema,
+  }, async (args) => {
+    const jobId = args.id.trim();
+    const prompt = args.prompt.trim();
+    const job = await orchestratorClient.getJob(jobId);
+
+    if (!job.conversation_id) {
+      throw new Error(`Job ${jobId} does not have an active Codex conversation.`);
+    }
+    if (job.status !== 'awaiting_input') {
+      throw new Error(`Job ${jobId} is not awaiting input (current status: ${job.status}).`);
+    }
+
+    const codexResult = await callCodexReply({
+      conversationId: job.conversation_id,
+      prompt,
+    });
+
+    const responseText = collectTextContent(codexResult);
+    const followUpError = codexResultIndicatesError(codexResult);
+    const codexStatus = extractCodexStatus(codexResult);
+    const nextConversationId = extractConversationId(codexResult) ?? job.conversation_id;
+
+    const summaryObject = parseResultSummary(job.result_summary);
+    const timestamp = new Date().toISOString();
+    const continuations = Array.isArray(summaryObject.continuations)
+      ? (summaryObject.continuations as Array<Record<string, unknown>>)
+      : [];
+    continuations.push({ at: timestamp, prompt, response: responseText });
+    summaryObject.continuations = continuations;
+    summaryObject.last_continuation = { at: timestamp, prompt };
+
+    let newStatus: JobStatus;
+    if (followUpError) {
+      newStatus = 'failed';
+      summaryObject.error = followUpError;
+    } else if (codexStatus === 'awaiting_input') {
+      newStatus = 'awaiting_input';
+    } else {
+      newStatus = 'done';
+      summaryObject.message = 'Codex conversation finished after receiving additional input.';
+    }
+
+    const updatedJob = await orchestratorClient.updateJobStatus(jobId, newStatus, {
+      result_summary: summaryObject,
+      conversation_id: nextConversationId,
+    });
+
+    const textSummary = [
+      `Continued Codex job ${jobId}`,
+      `Prompt:\n${prompt}`,
+      responseText ? `Response:\n${responseText}` : 'Response: (no text output)',
+      `New status: ${newStatus}`,
+    ].join('\n\n');
+
+    return createTextResult(textSummary, { job: updatedJob, codexResult });
   });
 };

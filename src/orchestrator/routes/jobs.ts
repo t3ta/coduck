@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { JobStatus, SpecJson } from '../../shared/types.js';
 import { claimJob, createJob, getJob, listJobs, updateJobStatus } from '../models/job.js';
 
-const jobStatusEnum = z.enum(['pending', 'running', 'done', 'failed', 'cancelled']);
+const jobStatusEnum = z.enum(['pending', 'running', 'awaiting_input', 'done', 'failed', 'cancelled']);
 
 const specJsonSchema: z.ZodType<SpecJson> = z.object({
   goal: z.string().min(1),
@@ -23,6 +23,7 @@ const createJobSchema = z.object({
   worker_type: z.string().min(1),
   spec_json: specJsonSchema,
   result_summary: z.unknown().optional(),
+  conversation_id: z.string().nullable().optional(),
 });
 
 const listJobsQuerySchema = z.object({
@@ -35,8 +36,9 @@ const claimJobQuerySchema = z.object({
 });
 
 const completeJobSchema = z.object({
-  status: z.enum(['done', 'failed']),
+  status: z.enum(['done', 'failed', 'awaiting_input']),
   result_summary: z.unknown().optional(),
+  conversation_id: z.string().nullable().optional(),
 });
 
 const toFilterValue = (value: unknown): string | undefined => {
@@ -68,6 +70,7 @@ router.post('/', (req, res, next) => {
       status: 'pending' as JobStatus,
       spec_json: payload.spec_json,
       result_summary: resultSummary,
+      conversation_id: payload.conversation_id ?? null,
     });
     res.status(201).json(job);
   } catch (error) {
@@ -119,8 +122,14 @@ router.post('/:id/complete', (req, res, next) => {
   try {
     const { id } = req.params;
     const body = completeJobSchema.parse(req.body);
-
-    updateJobStatus(id, body.status, body.result_summary, 'running');
+    const hasConversationId = Object.hasOwn(body, 'conversation_id');
+    updateJobStatus(
+      id,
+      body.status,
+      body.result_summary,
+      ['running', 'awaiting_input'],
+      hasConversationId ? body.conversation_id ?? null : undefined
+    );
 
     const job = getJob(id);
     if (!job) {

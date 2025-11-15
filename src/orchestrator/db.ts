@@ -41,6 +41,7 @@ export const runMigrations = (): void => {
       status TEXT NOT NULL,
       spec_json TEXT NOT NULL,
       result_summary TEXT,
+      conversation_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -48,6 +49,12 @@ export const runMigrations = (): void => {
     CREATE INDEX IF NOT EXISTS idx_jobs_worker_type ON jobs(worker_type);
     CREATE INDEX IF NOT EXISTS idx_jobs_status_worker_type ON jobs(status, worker_type);
   `);
+
+  const columns = db.prepare(`PRAGMA table_info(jobs)`).all() as Array<{ name: string }>;
+  const hasConversationId = columns.some((column) => column.name === 'conversation_id');
+  if (!hasConversationId) {
+    db.exec('ALTER TABLE jobs ADD COLUMN conversation_id TEXT');
+  }
 };
 
 export const initDb = (): BetterSqlite3Database => {

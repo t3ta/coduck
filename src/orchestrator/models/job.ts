@@ -13,6 +13,7 @@ type JobRow = {
   status: JobStatus;
   spec_json: string;
   result_summary: string | null;
+  conversation_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -36,6 +37,7 @@ const deserializeJob = (row: JobRow): Job => ({
   status: row.status,
   spec_json: JSON.parse(row.spec_json),
   result_summary: row.result_summary,
+  conversation_id: row.conversation_id,
   created_at: row.created_at,
   updated_at: row.updated_at,
 });
@@ -55,9 +57,10 @@ export const createJob = (job: CreateJobInput): Job => {
       status,
       spec_json,
       result_summary,
+      conversation_id,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   insert.run(
@@ -70,6 +73,7 @@ export const createJob = (job: CreateJobInput): Job => {
     job.status,
     JSON.stringify(job.spec_json),
     job.result_summary ?? null,
+    job.conversation_id ?? null,
     now,
     now
   );
@@ -116,7 +120,8 @@ export const updateJobStatus = (
   id: string,
   status: JobStatus,
   result_summary?: unknown,
-  expectedStatus?: JobStatus
+  expectedStatus?: JobStatus | JobStatus[],
+  conversation_id?: string | null
 ): void => {
   const db = getDb();
   const now = new Date().toISOString();
@@ -128,12 +133,19 @@ export const updateJobStatus = (
     params.push(serializeResultSummary(result_summary));
   }
 
+  if (conversation_id !== undefined) {
+    assignments.push('conversation_id = ?');
+    params.push(conversation_id);
+  }
+
   const whereClauses = ['id = ?'];
   const whereParams: Array<string> = [id];
 
   if (expectedStatus) {
-    whereClauses.push('status = ?');
-    whereParams.push(expectedStatus);
+    const statuses = Array.isArray(expectedStatus) ? expectedStatus : [expectedStatus];
+    const placeholders = statuses.map(() => '?').join(', ');
+    whereClauses.push(`status IN (${placeholders})`);
+    whereParams.push(...statuses);
   }
 
   const stmt = db.prepare(`UPDATE jobs SET ${assignments.join(', ')} WHERE ${whereClauses.join(' AND ')}`);

@@ -3,6 +3,9 @@ dist
 .env
 worktrees/
 *.db
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 
 .npm-cache/
 .serena/

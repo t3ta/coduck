@@ -39,7 +39,7 @@ const pathExists = async (targetPath: string): Promise<boolean> => {
 
 type CommandResult = { stdout: string; stderr: string };
 
-type JobCompletionStatus = 'done' | 'failed';
+type JobCompletionStatus = 'done' | 'failed' | 'awaiting_input';
 
 type ResultSummary = Record<string, unknown>;
 
@@ -116,14 +116,23 @@ export class CodexWorker {
     return job;
   }
 
-  private async completeJob(jobId: string, status: JobCompletionStatus, summary: ResultSummary): Promise<void> {
+  private async completeJob(
+    jobId: string,
+    status: JobCompletionStatus,
+    summary: ResultSummary,
+    conversationId?: string | null
+  ): Promise<void> {
     const url = new URL(`/jobs/${jobId}/complete`, `${this.baseUrl}/`);
+    const body: Record<string, unknown> = { status, result_summary: summary };
+    if (conversationId !== undefined) {
+      body.conversation_id = conversationId;
+    }
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ status, result_summary: summary }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -142,6 +151,7 @@ export class CodexWorker {
 
     let worktreeContext: WorktreeContext | null = null;
     let success = false;
+    let conversationId: string | null = job.conversation_id ?? null;
 
     try {
       const repoPath = await this.ensureRepoPath(job.repo_url);
@@ -151,10 +161,26 @@ export class CodexWorker {
       worktreeContext = await createWorktree(repoPath, job.base_ref, job.branch_name, worktreePath);
 
       const execution = await executeCodex(worktreeContext.path, job.spec_json);
-      if (!execution.success) {
-        throw new Error(execution.error ?? 'Codex CLI reported failure');
+      if (execution.conversationId) {
+        conversationId = execution.conversationId;
       }
-      summary.codex = { success: execution.success };
+      summary.codex = {
+        success: execution.success,
+        conversation_id: conversationId,
+        awaiting_input: execution.awaitingInput ?? false,
+      };
+      summary.conversation_id = conversationId;
+
+      if (execution.awaitingInput) {
+        summary.message = 'Codex is awaiting additional input before proceeding.';
+        await this.completeJob(job.id, 'awaiting_input', summary, conversationId);
+        console.log(`Job ${job.id} is awaiting additional input.`);
+        return;
+      }
+
+      if (!execution.success) {
+        throw new Error(execution.error ?? 'Codex MCP reported failure');
+      }
 
       const commitHash = await this.commitChanges(worktreeContext.path, job.id);
       summary.commit_hash = commitHash ?? null;
@@ -179,18 +205,19 @@ export class CodexWorker {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       summary.error = message;
+      summary.conversation_id = conversationId;
       console.error(`Job ${job.id} failed: ${message}`);
     }
 
     try {
       if (success) {
-        await this.completeJob(job.id, 'done', summary);
+        await this.completeJob(job.id, 'done', summary, conversationId);
         if (worktreeContext) {
           await worktreeContext.cleanup();
         }
         console.log(`Job ${job.id} completed.`);
       } else {
-        await this.completeJob(job.id, 'failed', summary);
+        await this.completeJob(job.id, 'failed', summary, conversationId);
         console.log(`Job ${job.id} reported as failed.`);
       }
     } catch (completionError) {

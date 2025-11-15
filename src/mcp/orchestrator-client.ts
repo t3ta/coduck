@@ -143,6 +143,30 @@ export class OrchestratorClient {
     return this.request<Job>(`/jobs/${encodeURIComponent(id)}`);
   }
 
+  async updateJobStatus(
+    id: string,
+    status: JobStatus,
+    options?: { result_summary?: unknown; conversation_id?: string | null }
+  ): Promise<Job> {
+    const trimmedId = id.trim();
+    if (!trimmedId) {
+      throw new Error('Job ID is required');
+    }
+
+    const body: Record<string, unknown> = { status };
+    if (options && Object.hasOwn(options, 'result_summary')) {
+      body.result_summary = options.result_summary;
+    }
+    if (options && Object.hasOwn(options, 'conversation_id')) {
+      body.conversation_id = options.conversation_id;
+    }
+
+    return this.request<Job>(`/jobs/${encodeURIComponent(trimmedId)}/complete`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  }
+
   private async request<T>(path: string, init: RequestInit = {}, searchParams?: URLSearchParams): Promise<T> {
     const url = new URL(path, this.baseUrl);
     if (searchParams) {

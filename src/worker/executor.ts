@@ -1,13 +1,13 @@
-import { spawn } from 'node:child_process';
-
 import type { SpecJson } from '../shared/types.js';
-import { appConfig } from '../shared/config.js';
+import { callCodex, collectTextContent, codexResultIndicatesError, extractCodexStatus, extractConversationId } from '../shared/codex-mcp.js';
 
 export interface ExecutionResult {
   success: boolean;
   commitHash?: string;
   testsPassed?: boolean;
   error?: string;
+  conversationId?: string;
+  awaitingInput?: boolean;
 }
 
 const buildPrompt = (spec: SpecJson): string => {
@@ -34,41 +34,39 @@ const buildPrompt = (spec: SpecJson): string => {
 
 export async function executeCodex(worktreePath: string, specJson: SpecJson): Promise<ExecutionResult> {
   const prompt = buildPrompt(specJson);
-
-  return new Promise<ExecutionResult>((resolve) => {
-    const child = spawn(appConfig.codexCliPath, [], {
-      cwd: worktreePath,
-      env: {
-        ...process.env,
-      },
-      stdio: ['pipe', 'pipe', 'pipe'],
+  try {
+    const result = await callCodex({
+      prompt,
+      worktreePath,
+      sandbox: 'workspace-write',
+      approvalPolicy: 'never',
     });
 
-    let stderr = '';
+    const output = collectTextContent(result);
+    if (output.trim()) {
+      console.log(output.trim());
+    }
 
-    child.stdout.on('data', (chunk: Buffer) => {
-      process.stdout.write(chunk);
-    });
+    const conversationId = extractConversationId(result);
+    const status = extractCodexStatus(result);
+    const error = codexResultIndicatesError(result);
 
-    child.stderr.on('data', (chunk: Buffer) => {
-      stderr += chunk.toString();
-      process.stderr.write(chunk);
-    });
+    if (status === 'awaiting_input') {
+      return {
+        success: false,
+        conversationId,
+        awaitingInput: true,
+        error: error ?? (output.trim() || 'Codex is awaiting additional input.'),
+      };
+    }
 
-    child.on('error', (error) => {
-      resolve({ success: false, error: `Failed to start Codex CLI: ${error.message}` });
-    });
+    if (error) {
+      return { success: false, conversationId, error };
+    }
 
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve({ success: true });
-      } else {
-        const errorMessage = stderr.trim() || `Codex CLI exited with code ${code}`;
-        resolve({ success: false, error: errorMessage });
-      }
-    });
-
-    child.stdin.write(`${prompt}\n`);
-    child.stdin.end();
-  });
+    return { success: true, conversationId };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { success: false, error: `Failed to execute Codex via MCP: ${message}` };
+  }
 }

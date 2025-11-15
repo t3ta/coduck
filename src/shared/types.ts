@@ -1,4 +1,4 @@
-export type JobStatus = 'pending' | 'running' | 'done' | 'failed' | 'cancelled';
+export type JobStatus = 'pending' | 'running' | 'awaiting_input' | 'done' | 'failed' | 'cancelled';
 
 export interface SpecJson {
   goal: string;
@@ -18,6 +18,7 @@ export interface Job {
   status: JobStatus;
   spec_json: SpecJson;
   result_summary: string | null;
+  conversation_id: string | null;
   created_at: string;
   updated_at: string;
 }
