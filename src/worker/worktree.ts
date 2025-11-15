@@ -76,6 +76,11 @@ export async function createWorktree(
   if (worktreeExists && gitFileExists) {
     // Reuse existing worktree
     console.log(`Reusing existing worktree at ${resolvedWorktreePath}`);
+
+    // Clean up any uncommitted changes or untracked files from previous jobs
+    await runGit(['reset', '--hard'], { cwd: resolvedWorktreePath });
+    await runGit(['clean', '-fd'], { cwd: resolvedWorktreePath });
+
     await runGit(['fetch', '--all'], { cwd: resolvedWorktreePath });
     await runGit(['checkout', branchName], { cwd: resolvedWorktreePath });
 
