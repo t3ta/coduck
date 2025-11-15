@@ -1,5 +1,5 @@
 import type { SpecJson } from '../shared/types.js';
-import { callCodex, collectTextContent, codexResultIndicatesError, extractCodexStatus, extractConversationId } from '../shared/codex-mcp.js';
+import { callCodex, collectTextContent, codexResultIndicatesError, extractCodexStatus, extractConversationId, extractLatestSessionId } from '../shared/codex-mcp.js';
 
 export interface ExecutionResult {
   success: boolean;
@@ -35,6 +35,9 @@ const buildPrompt = (spec: SpecJson): string => {
 export async function executeCodex(worktreePath: string, specJson: SpecJson): Promise<ExecutionResult> {
   const prompt = buildPrompt(specJson);
   try {
+    // Record timestamp before Codex execution (convert to seconds as used in history.jsonl)
+    const beforeTimestamp = Math.floor(Date.now() / 1000);
+
     const result = await callCodex({
       prompt,
       worktreePath,
@@ -47,7 +50,17 @@ export async function executeCodex(worktreePath: string, specJson: SpecJson): Pr
       console.log(output.trim());
     }
 
-    const conversationId = extractConversationId(result);
+    // Try to extract conversationId from the result first
+    let conversationId = extractConversationId(result);
+
+    // If not found in result, try to extract from ~/.codex/history.jsonl
+    if (!conversationId) {
+      conversationId = extractLatestSessionId(beforeTimestamp);
+      if (conversationId) {
+        console.log('[INFO] Extracted conversationId from history.jsonl:', conversationId);
+      }
+    }
+
     const status = extractCodexStatus(result);
     const error = codexResultIndicatesError(result);
 

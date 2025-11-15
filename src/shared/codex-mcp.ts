@@ -2,6 +2,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 import { appConfig } from './config.js';
 
@@ -32,6 +35,65 @@ interface CodexReplyOptions {
 const buildEnvironment = (): Record<string, string> => {
   const entries = Object.entries(process.env).filter((entry): entry is [string, string] => typeof entry[1] === 'string');
   return Object.fromEntries(entries);
+};
+
+interface HistoryEntry {
+  session_id: string;
+  ts: number;
+  text: string;
+}
+
+export const extractLatestSessionId = (afterTimestamp: number): string | undefined => {
+  try {
+    // Codex MCP server writes to sessions directory, not history.jsonl
+    // Look for session files created after the given timestamp
+    const sessionsBase = join(homedir(), '.codex', 'sessions');
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+
+    const todayPath = join(sessionsBase, String(year), month, day);
+
+    try {
+      const files = readdirSync(todayPath);
+      const sessionFiles = files.filter(f => f.endsWith('.jsonl'));
+
+      // Find files modified after the given timestamp
+      const recentFiles: Array<{ file: string; mtime: number }> = [];
+      for (const file of sessionFiles) {
+        const filePath = join(todayPath, file);
+        const stat = statSync(filePath);
+        const mtimeSeconds = Math.floor(stat.mtimeMs / 1000);
+
+        if (mtimeSeconds >= afterTimestamp) {
+          recentFiles.push({ file, mtime: mtimeSeconds });
+        }
+      }
+
+      if (recentFiles.length === 0) {
+        return undefined;
+      }
+
+      // Sort by modification time, most recent first
+      recentFiles.sort((a, b) => b.mtime - a.mtime);
+
+      // Extract session_id from filename: rollout-YYYY-MM-DDTHH-MM-SS-<session_id>.jsonl
+      const latestFile = recentFiles[0].file;
+      const match = latestFile.match(/rollout-.*-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/);
+
+      if (match && match[1]) {
+        return match[1];
+      }
+    } catch {
+      // Directory doesn't exist or other error
+    }
+
+    return undefined;
+  } catch (error) {
+    console.error('[WARN] Failed to extract session ID:', error);
+    return undefined;
+  }
 };
 
 const createTransport = (): StdioClientTransport =>
