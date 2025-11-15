@@ -238,8 +238,14 @@ export class CodexWorker {
       if (success) {
         // Clean up worktree BEFORE marking job as done to prevent race conditions
         if (worktreeContext && job.push_mode !== 'never') {
-          await worktreeContext.cleanup();
-          console.log(`Job ${job.id}: Worktree cleaned up.`);
+          try {
+            await worktreeContext.cleanup();
+            console.log(`Job ${job.id}: Worktree cleaned up.`);
+          } catch (cleanupError) {
+            const message = cleanupError instanceof Error ? cleanupError.message : String(cleanupError);
+            console.warn(`Job ${job.id}: Worktree cleanup failed - ${message}`);
+            summary.cleanup_error = message;
+          }
         }
 
         await this.completeJob(job.id, 'done', summary, conversationId);
