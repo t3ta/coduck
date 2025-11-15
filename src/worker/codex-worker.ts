@@ -43,18 +43,39 @@ type JobCompletionStatus = 'done' | 'failed' | 'awaiting_input';
 
 type ResultSummary = Record<string, unknown>;
 
+type CodexWorkerDependencies = {
+  /**
+   * Dependency injection hook for tests to supply a fake fetch implementation.
+   */
+  fetchImpl?: typeof fetch;
+  /**
+   * Dependency injection hook for tests to bypass real git operations.
+   */
+  createWorktree?: typeof createWorktree;
+  /**
+   * Dependency injection hook for tests to stub Codex execution behaviour.
+   */
+  executeCodex?: typeof executeCodex;
+};
+
 export class CodexWorker {
   private readonly baseUrl: string;
   private readonly pollInterval: number;
   private readonly worktreeBaseDir: string;
   private readonly repoCacheDir: string;
+  private readonly fetchImpl: typeof fetch;
+  private readonly createWorktreeImpl: typeof createWorktree;
+  private readonly executeCodexImpl: typeof executeCodex;
   private shouldStop = false;
 
-  constructor() {
+  constructor(deps: CodexWorkerDependencies = {}) {
     this.baseUrl = appConfig.orchestratorUrl.replace(/\/+$/, '');
     this.pollInterval = appConfig.workerPollIntervalMs;
     this.worktreeBaseDir = path.resolve(appConfig.worktreeBaseDir);
     this.repoCacheDir = path.join(this.worktreeBaseDir, '_repos');
+    this.fetchImpl = deps.fetchImpl ?? fetch;
+    this.createWorktreeImpl = deps.createWorktree ?? createWorktree;
+    this.executeCodexImpl = deps.executeCodex ?? executeCodex;
   }
 
   public stop(): void {
@@ -100,7 +121,7 @@ export class CodexWorker {
 
   private async claimJob(): Promise<Job | null> {
     const url = new URL(`/jobs/claim?worker_type=${WORKER_TYPE}`, `${this.baseUrl}/`);
-    const response = await fetch(url, { method: 'POST' });
+    const response = await this.fetchImpl(url, { method: 'POST' });
 
     if (response.status === 404) {
       return null;
@@ -127,7 +148,7 @@ export class CodexWorker {
     if (conversationId !== undefined) {
       body.conversation_id = conversationId;
     }
-    const response = await fetch(url, {
+    const response = await this.fetchImpl(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -158,9 +179,9 @@ export class CodexWorker {
       const worktreePath = await this.resolveWorktreePath(job.worktree_path);
       summary.worktree_path = worktreePath;
 
-      worktreeContext = await createWorktree(repoPath, job.base_ref, job.branch_name, worktreePath);
+      worktreeContext = await this.createWorktreeImpl(repoPath, job.base_ref, job.branch_name, worktreePath);
 
-      const execution = await executeCodex(worktreeContext.path, job.spec_json);
+      const execution = await this.executeCodexImpl(worktreeContext.path, job.spec_json);
       if (execution.conversationId) {
         conversationId = execution.conversationId;
       }
