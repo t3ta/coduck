@@ -127,7 +127,12 @@ export class OrchestratorClient {
     if (args.branch_name?.trim()) {
       branchName = args.branch_name.trim();
     } else if (args.feature_id?.trim()) {
-      branchName = `feature/${args.feature_id.trim()}`;
+      // Sanitize feature_id for use as git ref (same logic as generateJobMetadata)
+      const sanitizedFeatureId = args.feature_id
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+      branchName = `feature/${sanitizedFeatureId}`;
     } else {
       branchName = this.generateJobMetadata(args.goal).branchName;
     }
