@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "tsx tests/run-tests.ts",
     "orchestrator": "tsx src/orchestrator.ts",
     "worker": "tsx src/worker.ts",
     "mcp": "tsx src/mcp.ts"
