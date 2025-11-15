@@ -13,6 +13,7 @@ import {
   extractConversationId,
   extractLatestSessionId,
 } from '../../shared/codex-mcp.js';
+import { removeWorktree } from '../../worker/worktree.js';
 
 const JOB_STATUSES = ['pending', 'running', 'awaiting_input', 'done', 'failed', 'cancelled'] as const;
 type _JobStatusCoverageCheck = Exclude<JobStatus, (typeof JOB_STATUSES)[number]> extends never ? true : never;
@@ -197,6 +198,11 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
     }
 
     const job = await orchestratorClient.deleteJob(jobId);
+    try {
+      await removeWorktree(job.worktree_path);
+    } catch (error) {
+      console.warn(`Failed to remove worktree ${job.worktree_path}:`, error);
+    }
     const summary = `Deleted job ${job.id}\n\n${formatJob(job)}`;
     return createTextResult(summary, { job });
   });
@@ -211,6 +217,14 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
 
     const result = await orchestratorClient.cleanupJobs(sanitizedOptions);
     const jobList = result.jobs.length ? result.jobs.map((job) => formatJob(job)).join('\n\n') : 'No jobs deleted.';
+    const worktreePaths = [...new Set(result.jobs.map((job) => job.worktree_path))];
+    for (const worktreePath of worktreePaths) {
+      try {
+        await removeWorktree(worktreePath);
+      } catch (error) {
+        console.warn(`Failed to remove worktree ${worktreePath}:`, error);
+      }
+    }
 
     const parts = [`Deleted ${result.deleted} job(s).`];
     if (excludedStatuses.length) {

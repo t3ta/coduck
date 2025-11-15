@@ -186,7 +186,7 @@ export class OrchestratorClient {
   async cleanupJobs(options?: CleanupJobsOptions): Promise<{ deleted: number; jobs: Job[] }> {
     const body: Record<string, unknown> = {};
 
-    if (options?.statuses?.length) {
+    if (options?.statuses !== undefined) {
       body.statuses = options.statuses;
     }
 
