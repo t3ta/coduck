@@ -12,7 +12,8 @@ import { initDb } from '../orchestrator/db.js';
 import { listJobs as listJobsFromDb } from '../orchestrator/models/job.js';
 
 const JOB_STATUSES: JobStatus[] = ['pending', 'running', 'awaiting_input', 'done', 'failed', 'cancelled'];
-const DEFAULT_JOB_STATUSES: JobStatus[] = ['done', 'failed', 'cancelled'];
+const DEFAULT_BULK_DELETE_STATUSES: JobStatus[] = ['done', 'failed', 'cancelled'];
+const PROTECTED_STATUSES = new Set<JobStatus>(['running', 'awaiting_input']);
 const MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const WORKTREE_BASE_DIR = path.resolve(appConfig.worktreeBaseDir);
@@ -60,6 +61,15 @@ Options:
 
 const jobStatusSet = new Set<JobStatus>(JOB_STATUSES);
 
+const sanitizeJobStatuses = (
+  statuses?: JobStatus[]
+): { effectiveStatuses: JobStatus[]; excludedStatuses: JobStatus[] } => {
+  const requested = statuses ?? DEFAULT_BULK_DELETE_STATUSES;
+  const effectiveStatuses = requested.filter((status) => !PROTECTED_STATUSES.has(status));
+  const excludedStatuses = (statuses ?? []).filter((status) => PROTECTED_STATUSES.has(status));
+  return { effectiveStatuses, excludedStatuses };
+};
+
 const formatPath = (targetPath: string): string => {
   const resolved = path.resolve(targetPath);
   const relative = path.relative(process.cwd(), resolved);
@@ -91,7 +101,7 @@ const parseArgs = (argv: string[]): CleanupOptions => {
 
   const options: CleanupOptions = {
     jobs: false,
-    statuses: [...DEFAULT_JOB_STATUSES],
+    statuses: [...DEFAULT_BULK_DELETE_STATUSES],
     worktrees: false,
     repoCache: false,
     dryRun: false,
@@ -227,8 +237,12 @@ const promptForConfirmation = async (operations: Operation[]): Promise<boolean> 
   }
 };
 
-const filterJobsForCleanup = (jobs: Job[], statuses: JobStatus[], maxAgeDays?: number): Job[] => {
-  const statusSet = new Set(statuses);
+const filterJobsForCleanup = (jobs: Job[], statuses?: JobStatus[], maxAgeDays?: number): Job[] => {
+  const { effectiveStatuses } = sanitizeJobStatuses(statuses);
+  if (!effectiveStatuses.length) {
+    return [];
+  }
+  const statusSet = new Set(effectiveStatuses);
   const cutoff = maxAgeDays !== undefined ? Date.now() - maxAgeDays * MILLISECONDS_PER_DAY : undefined;
   return jobs.filter((job) => {
     if (!statusSet.has(job.status)) {
@@ -323,9 +337,21 @@ const cleanupJobs = async (
     }`
   );
 
+  const { effectiveStatuses, excludedStatuses } = sanitizeJobStatuses(options.statuses);
+
+  if (excludedStatuses.length) {
+    console.log(`Excluded protected statuses: ${excludedStatuses.join(', ')}`);
+  }
+
   if (options.dryRun) {
+    if (!effectiveStatuses.length) {
+      console.log('No deletable statuses specified (all are protected).');
+      console.log('Found 0 job(s) to delete.');
+      console.log('Dry run: not deleting jobs.');
+      return { deleted: 0, worktreesRemoved: 0 };
+    }
     const jobs = listJobsSnapshot();
-    const candidates = filterJobsForCleanup(jobs, options.statuses, options.maxAgeDays);
+    const candidates = filterJobsForCleanup(jobs, effectiveStatuses, options.maxAgeDays);
     console.log(`Found ${candidates.length} job(s) to delete.`);
     if (candidates.length) {
       console.log('Jobs:');
@@ -340,7 +366,13 @@ const cleanupJobs = async (
     return { deleted: candidates.length, worktreesRemoved: 0 };
   }
 
-  const response = await client.cleanupJobs({ statuses: options.statuses, maxAgeDays: options.maxAgeDays });
+  if (!effectiveStatuses.length) {
+    console.log('No deletable statuses specified (all are protected).');
+    console.log('Deleted 0 job(s).');
+    return { deleted: 0, worktreesRemoved: 0 };
+  }
+
+  const response = await client.cleanupJobs({ statuses: effectiveStatuses, maxAgeDays: options.maxAgeDays });
   console.log(`Deleted ${response.deleted} job(s).`);
 
   const jobs = response.jobs ?? [];
