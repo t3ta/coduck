@@ -3,7 +3,14 @@ import { randomUUID, createHash } from 'node:crypto';
 import path from 'node:path';
 
 import { appConfig } from '../shared/config.js';
-import type { Job, JobStatus, SpecJson } from '../shared/types.js';
+import type {
+  Job,
+  JobStatus,
+  SpecJson,
+  WorktreeCleanupResponse,
+  WorktreeDeletionResponse,
+  WorktreeInfo,
+} from '../shared/types.js';
 
 const WORKER_TYPE_CODEX = 'codex';
 const DEFAULT_BASE_REF = 'origin/main';
@@ -280,5 +287,21 @@ export class OrchestratorClient {
       branchName,
       worktreePath,
     };
+  }
+
+  async listWorktrees(): Promise<WorktreeInfo[]> {
+    return this.request<WorktreeInfo[]>('/worktrees');
+  }
+
+  async cleanupWorktrees(): Promise<WorktreeCleanupResponse> {
+    return this.request<WorktreeCleanupResponse>('/worktrees/cleanup', { method: 'DELETE' });
+  }
+
+  async deleteWorktree(worktreePath: string): Promise<WorktreeDeletionResponse> {
+    const trimmed = worktreePath.trim();
+    if (!trimmed) {
+      throw new Error('Worktree path is required.');
+    }
+    return this.request<WorktreeDeletionResponse>(`/worktrees/${encodeURIComponent(trimmed)}`, { method: 'DELETE' });
   }
 }

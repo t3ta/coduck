@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 import { OrchestratorClient, type CleanupJobsOptions, type ListJobsFilter } from '../orchestrator-client.js';
 import type { Job, JobStatus } from '../../shared/types.js';
@@ -14,6 +13,7 @@ import {
   extractLatestSessionId,
 } from '../../shared/codex-mcp.js';
 import { removeWorktree } from '../../worker/worktree.js';
+import { createTextResult } from './utils.js';
 
 const JOB_STATUSES = ['pending', 'running', 'awaiting_input', 'done', 'failed', 'cancelled'] as const;
 type _JobStatusCoverageCheck = Exclude<JobStatus, (typeof JOB_STATUSES)[number]> extends never ? true : never;
@@ -52,11 +52,6 @@ const cleanupJobsSchema = z.object({
 const continueCodexJobSchema = z.object({
   id: z.string().min(1, 'Job ID is required.'),
   prompt: z.string().min(1, 'Provide a follow-up prompt.'),
-});
-
-const createTextResult = (text: string, structuredContent?: Record<string, unknown>): CallToolResult => ({
-  content: [{ type: 'text', text }],
-  ...(structuredContent ? { structuredContent } : {}),
 });
 
 const parseResultSummary = (value: string | null): Record<string, unknown> => {
