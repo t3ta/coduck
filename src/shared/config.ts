@@ -8,6 +8,7 @@ export interface AppConfig {
   orchestratorPort: number;
   orchestratorUrl: string;
   workerPollIntervalMs: number;
+  codexMcpTimeoutMs: number;
 }
 
 const parseNumber = (value: string | undefined, fallback: number): number => {
@@ -29,4 +30,5 @@ export const appConfig: AppConfig = {
   orchestratorPort,
   orchestratorUrl,
   workerPollIntervalMs: parseNumber(process.env.WORKER_POLL_INTERVAL_MS, 5000),
+  codexMcpTimeoutMs: parseNumber(process.env.CODEX_MCP_TIMEOUT_MS, 1800000),
 };

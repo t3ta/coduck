@@ -25,3 +25,37 @@ export interface Job {
   created_at: string;
   updated_at: string;
 }
+
+export type WorktreeState = 'orphaned' | 'in_use' | 'protected' | 'locked' | 'unmanaged';
+
+export interface WorktreeJobSummary {
+  id: string;
+  status: JobStatus;
+  feature_id: string | null;
+  feature_part: string | null;
+  updated_at: string;
+}
+
+export interface WorktreeInfo {
+  path: string;
+  branch: string | null;
+  head: string | null;
+  locked: boolean;
+  prunable: boolean;
+  managed: boolean;
+  jobs: WorktreeJobSummary[];
+  state: WorktreeState;
+  deletable: boolean;
+  blockedReasons: string[];
+}
+
+export interface WorktreeCleanupResponse {
+  removed: string[];
+  failures: Array<{ path: string; error: string }>;
+  skipped: Array<{ path: string; reason: string }>;
+}
+
+export interface WorktreeDeletionResponse {
+  removed: boolean;
+  worktree: WorktreeInfo;
+}

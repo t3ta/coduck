@@ -134,20 +134,28 @@ export const callCodex = async (options: CodexCallOptions): Promise<CallToolResu
   }
 
   return withCodexClient(async (client) => {
-    const result = await client.callTool({ name: CODEx_TOOL, arguments: args }, CallToolResultSchema);
+    const result = await client.callTool(
+      { name: CODEx_TOOL, arguments: args },
+      CallToolResultSchema,
+      { timeout: appConfig.codexMcpTimeoutMs }
+    );
     return result as CallToolResult;
   });
 };
 
 export const callCodexReply = async (options: CodexReplyOptions): Promise<CallToolResult> => {
   return withCodexClient(async (client) => {
-    const result = await client.callTool({
-      name: CODEx_REPLY_TOOL,
-      arguments: {
-        conversationId: options.conversationId,
-        prompt: options.prompt,
+    const result = await client.callTool(
+      {
+        name: CODEx_REPLY_TOOL,
+        arguments: {
+          conversationId: options.conversationId,
+          prompt: options.prompt,
+        },
       },
-    }, CallToolResultSchema);
+      CallToolResultSchema,
+      { timeout: appConfig.codexMcpTimeoutMs }
+    );
     return result as CallToolResult;
   });
 };

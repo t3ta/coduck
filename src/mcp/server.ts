@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 
 import { registerJobTools } from './tools/job-tools.js';
+import { registerWorktreeTools } from './tools/worktree-tools.js';
 import { OrchestratorClient } from './orchestrator-client.js';
 
 export const createServer = (): McpServer => {
@@ -17,7 +18,9 @@ export const createServer = (): McpServer => {
     },
   );
 
-  registerJobTools(server, new OrchestratorClient());
+  const orchestratorClient = new OrchestratorClient();
+  registerJobTools(server, orchestratorClient);
+  registerWorktreeTools(server, orchestratorClient);
 
   return server;
 };
