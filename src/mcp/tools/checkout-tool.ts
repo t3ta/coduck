@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { access, cp, readdir, rm } from 'node:fs/promises';
-import { basename, join, resolve } from 'node:path';
+import { basename, join, resolve, sep } from 'node:path';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
@@ -41,6 +41,16 @@ export const registerCheckoutTool = (
       // Determine target path
       const targetPath = args.target_path?.trim() || process.cwd();
       const resolvedTargetPath = resolve(targetPath);
+      const resolvedWorktreePath = resolve(job.worktree_path);
+
+      // Prevent copying into the source worktree or its subdirectories (cross-platform)
+      if (resolvedTargetPath === resolvedWorktreePath || resolvedTargetPath.startsWith(resolvedWorktreePath + sep)) {
+        throw new Error(
+          `Cannot checkout into the source worktree itself or its subdirectory.\n` +
+          `Target: ${resolvedTargetPath}\n` +
+          `Worktree: ${resolvedWorktreePath}`
+        );
+      }
 
       // Clean target directory before copying (excluding .git)
       try {
