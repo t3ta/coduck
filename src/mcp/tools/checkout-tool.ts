@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { access, cp } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { access, cp, readdir, rm } from 'node:fs/promises';
+import { basename, join, resolve } from 'node:path';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
@@ -42,12 +42,27 @@ export const registerCheckoutTool = (
       const targetPath = args.target_path?.trim() || process.cwd();
       const resolvedTargetPath = resolve(targetPath);
 
+      // Clean target directory before copying (excluding .git)
+      try {
+        const entries = await readdir(resolvedTargetPath);
+        for (const entry of entries) {
+          if (entry !== '.git') {
+            await rm(join(resolvedTargetPath, entry), { recursive: true, force: true });
+          }
+        }
+      } catch (error) {
+        // Target directory might not exist yet, which is fine
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error;
+        }
+      }
+
       // Copy worktree contents to target path, excluding .git
       await cp(job.worktree_path, resolvedTargetPath, {
         recursive: true,
         filter: (source) => {
-          // Exclude .git file/directory
-          const name = source.split('/').pop();
+          // Exclude .git file/directory (cross-platform)
+          const name = basename(source);
           return name !== '.git';
         },
         force: true,
@@ -60,6 +75,7 @@ export const registerCheckoutTool = (
         `Branch: ${job.branch_name}`,
         `Status: ${job.status}`,
         '',
+        'Note: Target directory was cleaned (excluding .git) before copying.',
         'Note: .git was excluded from the copy.',
       ].join('\n');
 
