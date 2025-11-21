@@ -65,6 +65,7 @@ const main = async (): Promise<void> => {
     workerPromise = worker.start().catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`Worker error: ${message}`);
+      void requestShutdown(undefined, 1);
     });
     console.log('Worker started.');
 
