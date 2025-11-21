@@ -1,12 +1,13 @@
 import type { SpecJson } from '../shared/types.js';
-import { callCodex, collectTextContent, codexResultIndicatesError, extractCodexStatus, extractConversationId, extractLatestSessionId } from '../shared/codex-mcp.js';
+import { execCodex, resumeCodex } from '../shared/codex-cli.js';
 
 export interface ExecutionResult {
   success: boolean;
   commitHash?: string;
   testsPassed?: boolean;
   error?: string;
-  conversationId?: string;
+  /** Session ID for resuming the conversation */
+  sessionId?: string;
   awaitingInput?: boolean;
 }
 
@@ -32,54 +33,77 @@ const buildPrompt = (spec: SpecJson): string => {
   return sections.join('\n\n');
 };
 
+/**
+ * Execute Codex for the first time (new session).
+ */
 export async function executeCodex(worktreePath: string, specJson: SpecJson): Promise<ExecutionResult> {
   const prompt = buildPrompt(specJson);
-  try {
-    // Record timestamp before Codex execution (convert to seconds as used in history.jsonl)
-    const beforeTimestamp = Math.floor(Date.now() / 1000);
 
-    const result = await callCodex({
-      prompt,
-      worktreePath,
-      sandbox: 'workspace-write',
-      approvalPolicy: 'never',
-    });
+  const result = await execCodex({
+    prompt,
+    worktreePath,
+    sandbox: 'workspace-write',
+    approvalPolicy: 'never',
+  });
 
-    const output = collectTextContent(result);
-    if (output.trim()) {
-      console.log(output.trim());
-    }
-
-    // Try to extract conversationId from the result first
-    let conversationId = extractConversationId(result);
-
-    // If not found in result, try to extract from ~/.codex/history.jsonl
-    if (!conversationId) {
-      conversationId = extractLatestSessionId(beforeTimestamp);
-      if (conversationId) {
-        console.log('[INFO] Extracted conversationId from history.jsonl:', conversationId);
-      }
-    }
-
-    const status = extractCodexStatus(result);
-    const error = codexResultIndicatesError(result);
-
-    if (status === 'awaiting_input') {
-      return {
-        success: false,
-        conversationId,
-        awaitingInput: true,
-        error: error ?? (output.trim() || 'Codex is awaiting additional input.'),
-      };
-    }
-
-    if (error) {
-      return { success: false, conversationId, error };
-    }
-
-    return { success: true, conversationId };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return { success: false, error: `Failed to execute Codex via MCP: ${message}` };
+  if (result.awaitingInput) {
+    return {
+      success: false,
+      sessionId: result.sessionId,
+      awaitingInput: true,
+      error: result.error ?? 'Codex is awaiting additional input.',
+    };
   }
+
+  if (!result.success) {
+    return {
+      success: false,
+      sessionId: result.sessionId,
+      error: result.error,
+    };
+  }
+
+  return {
+    success: true,
+    sessionId: result.sessionId,
+  };
+}
+
+/**
+ * Continue an existing Codex session.
+ */
+export async function continueCodex(
+  worktreePath: string,
+  sessionId: string,
+  additionalPrompt: string
+): Promise<ExecutionResult> {
+  const result = await resumeCodex({
+    sessionId,
+    prompt: additionalPrompt,
+    worktreePath,
+    sandbox: 'workspace-write',
+    approvalPolicy: 'never',
+  });
+
+  if (result.awaitingInput) {
+    return {
+      success: false,
+      sessionId: result.sessionId,
+      awaitingInput: true,
+      error: result.error ?? 'Codex is awaiting additional input.',
+    };
+  }
+
+  if (!result.success) {
+    return {
+      success: false,
+      sessionId: result.sessionId,
+      error: result.error,
+    };
+  }
+
+  return {
+    success: true,
+    sessionId: result.sessionId,
+  };
 }

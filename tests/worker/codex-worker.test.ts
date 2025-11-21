@@ -29,7 +29,7 @@ describe('CodexWorker handleJob', () => {
       branchName: 'feature/task',
       cleanup,
     });
-    const executeCodex = jest.fn().mockResolvedValue({ success: true, conversationId: 'conv-123' });
+    const executeCodex = jest.fn().mockResolvedValue({ success: true, sessionId: 'conv-123' });
     const completeJob = jest.fn().mockResolvedValue(undefined);
 
     const worker = new CodexWorker({
@@ -71,7 +71,7 @@ describe('CodexWorker handleJob', () => {
       branchName: 'feature/task',
       cleanup,
     });
-    const executeCodex = jest.fn().mockResolvedValue({ success: false, error: 'Codex crashed', conversationId: 'conv-fail' });
+    const executeCodex = jest.fn().mockResolvedValue({ success: false, error: 'Codex crashed', sessionId: 'conv-fail' });
     const completeJob = jest.fn().mockResolvedValue(undefined);
 
     const worker = new CodexWorker({ fetchImpl: jest.fn(), createWorktree, executeCodex });
@@ -106,7 +106,7 @@ describe('CodexWorker handleJob', () => {
     });
     const executeCodex = jest
       .fn()
-      .mockResolvedValue({ success: false, awaitingInput: true, error: 'Need clarification', conversationId: 'conv-await' });
+      .mockResolvedValue({ success: false, awaitingInput: true, error: 'Need clarification', sessionId: 'conv-await' });
     const completeJob = jest.fn().mockResolvedValue(undefined);
 
     const worker = new CodexWorker({ fetchImpl: jest.fn(), createWorktree, executeCodex });
@@ -145,7 +145,7 @@ describe('CodexWorker handleJob', () => {
         branchName: 'feature/task',
         cleanup,
       });
-      const executeCodex = jest.fn().mockResolvedValue({ success: true, conversationId: 'conv-123' });
+      const executeCodex = jest.fn().mockResolvedValue({ success: true, sessionId: 'conv-123' });
       const pushBranch = jest.fn().mockResolvedValue(undefined);
       const completeJob = jest.fn().mockResolvedValue(undefined);
 
@@ -176,7 +176,7 @@ describe('CodexWorker handleJob', () => {
         branchName: 'feature/task',
         cleanup,
       });
-      const executeCodex = jest.fn().mockResolvedValue({ success: true, conversationId: 'conv-123' });
+      const executeCodex = jest.fn().mockResolvedValue({ success: true, sessionId: 'conv-123' });
       const pushBranch = jest.fn().mockResolvedValue(undefined);
       const completeJob = jest.fn().mockResolvedValue(undefined);
 
@@ -207,7 +207,7 @@ describe('CodexWorker handleJob', () => {
         branchName: 'feature/task',
         cleanup,
       });
-      const executeCodex = jest.fn().mockResolvedValue({ success: true, conversationId: 'conv-123' });
+      const executeCodex = jest.fn().mockResolvedValue({ success: true, sessionId: 'conv-123' });
       const pushBranch = jest.fn().mockResolvedValue(undefined);
       const completeJob = jest.fn().mockResolvedValue(undefined);
 

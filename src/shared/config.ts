@@ -9,6 +9,10 @@ export interface AppConfig {
   orchestratorUrl: string;
   workerPollIntervalMs: number;
   codexMcpTimeoutMs: number;
+  /** Codex reasoning summary level: auto | concise | detailed */
+  codexReasoningSummary?: string;
+  /** Codex reasoning format: none | experimental */
+  codexReasoningFormat?: string;
 }
 
 const parseNumber = (value: string | undefined, fallback: number): number => {
@@ -31,4 +35,6 @@ export const appConfig: AppConfig = {
   orchestratorUrl,
   workerPollIntervalMs: parseNumber(process.env.WORKER_POLL_INTERVAL_MS, 5000),
   codexMcpTimeoutMs: parseNumber(process.env.CODEX_MCP_TIMEOUT_MS, 1800000),
+  codexReasoningSummary: process.env.CODEX_REASONING_SUMMARY || undefined,
+  codexReasoningFormat: process.env.CODEX_REASONING_FORMAT || undefined,
 };
