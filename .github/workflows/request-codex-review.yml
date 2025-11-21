@@ -1,0 +1,50 @@
+name: Request Codex Review
+
+on:
+  push:
+    branches:
+      - '**'
+
+jobs:
+  comment-for-review:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Mention Codex on related PRs
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const ref = context.ref;
+
+            if (!ref.startsWith('refs/heads/')) {
+              core.info(`Ref ${ref} is not a branch. Skipping Codex mention.`);
+              return;
+            }
+
+            const branch = ref.replace('refs/heads/', '');
+            const { data: pullRequests } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              head: `${context.repo.owner}:${branch}`,
+            });
+
+            if (!pullRequests.length) {
+              core.info(`No open pull requests for branch ${branch}. Nothing to do.`);
+              return;
+            }
+
+            const body = '@codex review';
+
+            for (const pr of pullRequests) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body,
+              });
+
+              core.info(`Requested Codex review on PR #${pr.number} for branch ${branch}.`);
+            }

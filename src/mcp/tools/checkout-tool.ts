@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { access, cp, readdir, rm } from 'node:fs/promises';
+import { access, cp, readdir, rm, realpath } from 'node:fs/promises';
 import { basename, join, resolve, sep } from 'node:path';
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -11,6 +11,20 @@ const checkoutJobWorktreeSchema = z.object({
   job_id: z.string().min(1, 'Job ID is required.'),
   target_path: z.string().min(1).optional(),
 });
+
+const normalizePathForComparison = async (inputPath: string): Promise<string> => {
+  const resolvedPath = resolve(inputPath);
+
+  // realpath canonicalizes and resolves symlinks; fallback is fine when the target does not yet exist.
+  let canonicalPath = resolvedPath;
+  try {
+    canonicalPath = await realpath(resolvedPath);
+  } catch {
+    // noop
+  }
+
+  return process.platform === 'win32' ? canonicalPath.toLowerCase() : canonicalPath;
+};
 
 export const registerCheckoutTool = (
   server: McpServer,
@@ -42,13 +56,18 @@ export const registerCheckoutTool = (
       const targetPath = args.target_path?.trim() || process.cwd();
       const resolvedTargetPath = resolve(targetPath);
       const resolvedWorktreePath = resolve(job.worktree_path);
+      const normalizedTargetPath = await normalizePathForComparison(resolvedTargetPath);
+      const normalizedWorktreePath = await normalizePathForComparison(resolvedWorktreePath);
 
       // Prevent copying into the source worktree or its subdirectories (cross-platform)
-      if (resolvedTargetPath === resolvedWorktreePath || resolvedTargetPath.startsWith(resolvedWorktreePath + sep)) {
+      if (
+        normalizedTargetPath === normalizedWorktreePath ||
+        normalizedTargetPath.startsWith(normalizedWorktreePath + sep)
+      ) {
         throw new Error(
           `Cannot checkout into the source worktree itself or its subdirectory.\n` +
-          `Target: ${resolvedTargetPath}\n` +
-          `Worktree: ${resolvedWorktreePath}`
+          `Target: ${normalizedTargetPath}\n` +
+          `Worktree: ${normalizedWorktreePath}`
         );
       }
 
