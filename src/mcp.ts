@@ -9,7 +9,7 @@ let worker: CodexWorker | null = null;
 let workerPromise: Promise<void> | null = null;
 let shuttingDown = false;
 
-const requestShutdown = async (signal?: NodeJS.Signals): Promise<void> => {
+const requestShutdown = async (signal?: NodeJS.Signals, exitCode = 0): Promise<void> => {
   if (shuttingDown) {
     return;
   }
@@ -40,7 +40,7 @@ const requestShutdown = async (signal?: NodeJS.Signals): Promise<void> => {
     });
   }
 
-  process.exit(0);
+  process.exit(exitCode);
 };
 
 const registerSignalHandlers = () => {
@@ -72,7 +72,7 @@ const main = async (): Promise<void> => {
     await startMcpServer();
   } catch (error) {
     console.error('Failed to start:', error);
-    process.exitCode = 1;
+    await requestShutdown(undefined, 1);
   }
 };
 
