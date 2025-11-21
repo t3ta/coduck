@@ -71,6 +71,9 @@ const main = async (): Promise<void> => {
 
     // 3. Start MCP Server (stdio transport - blocks until closed)
     await startMcpServer();
+
+    // MCP server closed normally, shutdown other services
+    await requestShutdown();
   } catch (error) {
     console.error('Failed to start:', error);
     await requestShutdown(undefined, 1);
