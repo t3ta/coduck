@@ -190,6 +190,8 @@ export class CodexWorker {
         success: execution.success,
         conversation_id: sessionId,
         awaiting_input: execution.awaitingInput ?? false,
+        duration_ms: execution.durationMs,
+        timed_out: execution.timedOut,
       };
       summary.conversation_id = sessionId;
 

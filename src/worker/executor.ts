@@ -9,6 +9,10 @@ export interface ExecutionResult {
   /** Session ID for resuming the conversation */
   sessionId?: string;
   awaitingInput?: boolean;
+  /** Execution duration in milliseconds */
+  durationMs?: number;
+  /** Whether execution timed out */
+  timedOut?: boolean;
 }
 
 const buildPrompt = (spec: SpecJson): string => {
@@ -51,6 +55,7 @@ export async function executeCodex(worktreePath: string, specJson: SpecJson): Pr
       success: false,
       sessionId: result.sessionId,
       awaitingInput: true,
+      durationMs: result.durationMs,
       error: result.error ?? 'Codex is awaiting additional input.',
     };
   }
@@ -59,6 +64,8 @@ export async function executeCodex(worktreePath: string, specJson: SpecJson): Pr
     return {
       success: false,
       sessionId: result.sessionId,
+      durationMs: result.durationMs,
+      timedOut: result.timedOut,
       error: result.error,
     };
   }
@@ -66,6 +73,7 @@ export async function executeCodex(worktreePath: string, specJson: SpecJson): Pr
   return {
     success: true,
     sessionId: result.sessionId,
+    durationMs: result.durationMs,
   };
 }
 
@@ -90,6 +98,7 @@ export async function continueCodex(
       success: false,
       sessionId: result.sessionId,
       awaitingInput: true,
+      durationMs: result.durationMs,
       error: result.error ?? 'Codex is awaiting additional input.',
     };
   }
@@ -98,6 +107,8 @@ export async function continueCodex(
     return {
       success: false,
       sessionId: result.sessionId,
+      durationMs: result.durationMs,
+      timedOut: result.timedOut,
       error: result.error,
     };
   }
@@ -105,5 +116,6 @@ export async function continueCodex(
   return {
     success: true,
     sessionId: result.sessionId,
+    durationMs: result.durationMs,
   };
 }

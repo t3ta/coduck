@@ -36,6 +36,10 @@ export interface CodexExecResult {
   sessionId?: string;
   awaitingInput?: boolean;
   error?: string;
+  /** Execution duration in milliseconds */
+  durationMs: number;
+  /** Whether the process was killed due to timeout */
+  timedOut?: boolean;
 }
 
 /**
@@ -116,7 +120,11 @@ const buildCodexConfig = (userConfig?: Record<string, unknown>): Record<string, 
  */
 export const execCodex = (options: CodexExecOptions): Promise<CodexExecResult> => {
   return new Promise((resolve) => {
-    const beforeTimestamp = Math.floor(Date.now() / 1000);
+    const startTime = Date.now();
+    const beforeTimestamp = Math.floor(startTime / 1000);
+    const timeoutMs = appConfig.codexMcpTimeoutMs;
+    let timedOut = false;
+    let resolved = false;
 
     const args = ['exec'];
 
@@ -135,13 +143,28 @@ export const execCodex = (options: CodexExecOptions): Promise<CodexExecResult> =
     // Add the prompt
     args.push(options.prompt);
 
-    console.log(`[CODEX] Executing: ${appConfig.codexCliPath} ${args.slice(0, 3).join(' ')} ...`);
+    console.log(`[CODEX] Executing: ${appConfig.codexCliPath} ${args.slice(0, 3).join(' ')} ... (timeout: ${timeoutMs}ms)`);
 
     const child = spawn(appConfig.codexCliPath, args, {
       cwd: options.worktreePath,
       env: process.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
+
+    // Set up timeout
+    const timeoutHandle = setTimeout(() => {
+      if (!resolved) {
+        timedOut = true;
+        console.error(`[CODEX] Timeout after ${timeoutMs}ms, killing process...`);
+        child.kill('SIGTERM');
+        // Force kill if SIGTERM doesn't work
+        setTimeout(() => {
+          if (!resolved) {
+            child.kill('SIGKILL');
+          }
+        }, 5000);
+      }
+    }, timeoutMs);
 
     let stdout = '';
     let stderr = '';
@@ -161,32 +184,52 @@ export const execCodex = (options: CodexExecOptions): Promise<CodexExecResult> =
     });
 
     child.on('error', (error) => {
+      clearTimeout(timeoutHandle);
+      resolved = true;
+      const durationMs = Date.now() - startTime;
       resolve({
         success: false,
         exitCode: null,
         stdout,
         stderr,
+        durationMs,
         error: `Failed to spawn Codex: ${error.message}`,
       });
     });
 
     child.on('close', (code) => {
+      clearTimeout(timeoutHandle);
+      resolved = true;
+      const durationMs = Date.now() - startTime;
       const sessionId = extractLatestSessionId(beforeTimestamp);
 
       if (sessionId) {
         console.log(`[CODEX] Session ID: ${sessionId}`);
       }
+      console.log(`[CODEX] Completed in ${(durationMs / 1000).toFixed(1)}s`);
 
       // Check if awaiting input (Codex might signal this via exit code or stderr)
       const awaitingInput = stderr.includes('awaiting') || stderr.includes('waiting for input');
 
-      if (code === 0) {
+      if (timedOut) {
+        resolve({
+          success: false,
+          exitCode: code,
+          stdout,
+          stderr,
+          sessionId,
+          durationMs,
+          timedOut: true,
+          error: `Codex timed out after ${timeoutMs}ms`,
+        });
+      } else if (code === 0) {
         resolve({
           success: true,
           exitCode: code,
           stdout,
           stderr,
           sessionId,
+          durationMs,
         });
       } else {
         resolve({
@@ -195,6 +238,7 @@ export const execCodex = (options: CodexExecOptions): Promise<CodexExecResult> =
           stdout,
           stderr,
           sessionId,
+          durationMs,
           awaitingInput,
           error: `Codex exited with code ${code}`,
         });
@@ -208,7 +252,11 @@ export const execCodex = (options: CodexExecOptions): Promise<CodexExecResult> =
  */
 export const resumeCodex = (options: CodexResumeOptions): Promise<CodexExecResult> => {
   return new Promise((resolve) => {
-    const beforeTimestamp = Math.floor(Date.now() / 1000);
+    const startTime = Date.now();
+    const beforeTimestamp = Math.floor(startTime / 1000);
+    const timeoutMs = appConfig.codexMcpTimeoutMs;
+    let timedOut = false;
+    let resolved = false;
 
     const args = ['exec', 'resume', options.sessionId];
 
@@ -227,13 +275,27 @@ export const resumeCodex = (options: CodexResumeOptions): Promise<CodexExecResul
     // Add the continuation prompt
     args.push(options.prompt);
 
-    console.log(`[CODEX] Resuming session ${options.sessionId}`);
+    console.log(`[CODEX] Resuming session ${options.sessionId} (timeout: ${timeoutMs}ms)`);
 
     const child = spawn(appConfig.codexCliPath, args, {
       cwd: options.worktreePath,
       env: process.env,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
+
+    // Set up timeout
+    const timeoutHandle = setTimeout(() => {
+      if (!resolved) {
+        timedOut = true;
+        console.error(`[CODEX] Timeout after ${timeoutMs}ms, killing process...`);
+        child.kill('SIGTERM');
+        setTimeout(() => {
+          if (!resolved) {
+            child.kill('SIGKILL');
+          }
+        }, 5000);
+      }
+    }, timeoutMs);
 
     let stdout = '';
     let stderr = '';
@@ -251,28 +313,49 @@ export const resumeCodex = (options: CodexResumeOptions): Promise<CodexExecResul
     });
 
     child.on('error', (error) => {
+      clearTimeout(timeoutHandle);
+      resolved = true;
+      const durationMs = Date.now() - startTime;
       resolve({
         success: false,
         exitCode: null,
         stdout,
         stderr,
+        durationMs,
         error: `Failed to spawn Codex: ${error.message}`,
       });
     });
 
     child.on('close', (code) => {
+      clearTimeout(timeoutHandle);
+      resolved = true;
+      const durationMs = Date.now() - startTime;
       // Try to get updated session ID (might be the same or new)
       const sessionId = extractLatestSessionId(beforeTimestamp) ?? options.sessionId;
 
+      console.log(`[CODEX] Completed in ${(durationMs / 1000).toFixed(1)}s`);
+
       const awaitingInput = stderr.includes('awaiting') || stderr.includes('waiting for input');
 
-      if (code === 0) {
+      if (timedOut) {
+        resolve({
+          success: false,
+          exitCode: code,
+          stdout,
+          stderr,
+          sessionId,
+          durationMs,
+          timedOut: true,
+          error: `Codex timed out after ${timeoutMs}ms`,
+        });
+      } else if (code === 0) {
         resolve({
           success: true,
           exitCode: code,
           stdout,
           stderr,
           sessionId,
+          durationMs,
         });
       } else {
         resolve({
@@ -281,6 +364,7 @@ export const resumeCodex = (options: CodexResumeOptions): Promise<CodexExecResul
           stdout,
           stderr,
           sessionId,
+          durationMs,
           awaitingInput,
           error: `Codex exited with code ${code}`,
         });
