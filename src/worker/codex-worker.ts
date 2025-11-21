@@ -172,7 +172,8 @@ export class CodexWorker {
 
     let worktreeContext: WorktreeContext | null = null;
     let success = false;
-    let conversationId: string | null = job.conversation_id ?? null;
+    // sessionId is the Codex session identifier (stored as conversation_id in DB for compatibility)
+    let sessionId: string | null = job.conversation_id ?? null;
 
     try {
       const repoPath = await this.ensureRepoPath(job.repo_url);
@@ -182,25 +183,27 @@ export class CodexWorker {
       worktreeContext = await this.createWorktreeImpl(repoPath, job.base_ref, job.branch_name, worktreePath);
 
       const execution = await this.executeCodexImpl(worktreeContext.path, job.spec_json);
-      if (execution.conversationId) {
-        conversationId = execution.conversationId;
+      if (execution.sessionId) {
+        sessionId = execution.sessionId;
       }
       summary.codex = {
         success: execution.success,
-        conversation_id: conversationId,
+        conversation_id: sessionId,
         awaiting_input: execution.awaitingInput ?? false,
+        duration_ms: execution.durationMs,
+        timed_out: execution.timedOut,
       };
-      summary.conversation_id = conversationId;
+      summary.conversation_id = sessionId;
 
       if (execution.awaitingInput) {
         summary.message = 'Codex is awaiting additional input before proceeding.';
-        await this.completeJob(job.id, 'awaiting_input', summary, conversationId);
+        await this.completeJob(job.id, 'awaiting_input', summary, sessionId);
         console.log(`Job ${job.id} is awaiting additional input.`);
         return;
       }
 
       if (!execution.success) {
-        throw new Error(execution.error ?? 'Codex MCP reported failure');
+        throw new Error(execution.error ?? 'Codex execution failed');
       }
 
       const commitHash = await this.commitChanges(worktreeContext.path, job.id);
@@ -230,7 +233,7 @@ export class CodexWorker {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       summary.error = message;
-      summary.conversation_id = conversationId;
+      summary.conversation_id = sessionId;
       console.error(`Job ${job.id} failed: ${message}`);
     }
 
@@ -248,7 +251,7 @@ export class CodexWorker {
           }
         }
 
-        await this.completeJob(job.id, 'done', summary, conversationId);
+        await this.completeJob(job.id, 'done', summary, sessionId);
 
         if (worktreeContext && job.push_mode === 'never') {
           console.log(`Job ${job.id} completed. Worktree preserved (push_mode='never').`);
@@ -256,7 +259,7 @@ export class CodexWorker {
           console.log(`Job ${job.id} completed.`);
         }
       } else {
-        await this.completeJob(job.id, 'failed', summary, conversationId);
+        await this.completeJob(job.id, 'failed', summary, sessionId);
         console.log(`Job ${job.id} reported as failed.`);
       }
     } catch (completionError) {
