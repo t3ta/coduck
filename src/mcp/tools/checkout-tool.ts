@@ -12,6 +12,10 @@ const checkoutJobWorktreeSchema = z.object({
   target_path: z.string().min(1).optional(),
 });
 
+const withTrailingSep = (pathStr: string): string => (pathStr.endsWith(sep) ? pathStr : pathStr + sep);
+const isSameOrSubpath = (base: string, maybeSubpath: string): boolean =>
+  maybeSubpath === base || maybeSubpath.startsWith(withTrailingSep(base));
+
 const normalizePathForComparison = async (inputPath: string): Promise<string> => {
   const resolvedPath = resolve(inputPath);
 
@@ -59,13 +63,18 @@ export const registerCheckoutTool = (
       const normalizedTargetPath = await normalizePathForComparison(resolvedTargetPath);
       const normalizedWorktreePath = await normalizePathForComparison(resolvedWorktreePath);
 
-      // Prevent copying into the source worktree or its subdirectories (cross-platform)
-      if (
-        normalizedTargetPath === normalizedWorktreePath ||
-        normalizedTargetPath.startsWith(normalizedWorktreePath + sep)
-      ) {
+      // Prevent copying into the source worktree, its subdirectories, or its ancestors (cross-platform)
+      if (isSameOrSubpath(normalizedWorktreePath, normalizedTargetPath)) {
         throw new Error(
           `Cannot checkout into the source worktree itself or its subdirectory.\n` +
+          `Target: ${normalizedTargetPath}\n` +
+          `Worktree: ${normalizedWorktreePath}`
+        );
+      }
+
+      if (isSameOrSubpath(normalizedTargetPath, normalizedWorktreePath)) {
+        throw new Error(
+          `Cannot checkout into an ancestor of the source worktree (would delete the worktree during cleanup).\n` +
           `Target: ${normalizedTargetPath}\n` +
           `Worktree: ${normalizedWorktreePath}`
         );
