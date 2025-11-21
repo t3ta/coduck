@@ -116,6 +116,39 @@ const buildCodexConfig = (userConfig?: Record<string, unknown>): Record<string, 
 };
 
 /**
+ * Parse session ID from Codex JSON output.
+ * Codex outputs JSON lines with various event types including session info.
+ */
+const parseSessionIdFromOutput = (output: string): string | undefined => {
+  // Try to find session_id in JSON output lines
+  const lines = output.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || !trimmed.startsWith('{')) continue;
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+      // Look for session_id in various possible locations
+      if (typeof parsed.session_id === 'string') {
+        return parsed.session_id;
+      }
+      if (typeof parsed.sessionId === 'string') {
+        return parsed.sessionId;
+      }
+      // Check nested structures
+      if (parsed.data && typeof parsed.data === 'object') {
+        const data = parsed.data as Record<string, unknown>;
+        if (typeof data.session_id === 'string') {
+          return data.session_id;
+        }
+      }
+    } catch {
+      // Not valid JSON, skip
+    }
+  }
+  return undefined;
+};
+
+/**
  * Execute `codex exec` command and stream output in real-time.
  */
 export const execCodex = (options: CodexExecOptions): Promise<CodexExecResult> => {
@@ -201,7 +234,11 @@ export const execCodex = (options: CodexExecOptions): Promise<CodexExecResult> =
       clearTimeout(timeoutHandle);
       resolved = true;
       const durationMs = Date.now() - startTime;
-      const sessionId = extractLatestSessionId(beforeTimestamp);
+      // Try to parse session ID from output first (more reliable for concurrent execution)
+      // Fall back to file system scanning if not found
+      const sessionId = parseSessionIdFromOutput(stdout) ??
+                        parseSessionIdFromOutput(stderr) ??
+                        extractLatestSessionId(beforeTimestamp);
 
       if (sessionId) {
         console.log(`[CODEX] Session ID: ${sessionId}`);
@@ -330,8 +367,12 @@ export const resumeCodex = (options: CodexResumeOptions): Promise<CodexExecResul
       clearTimeout(timeoutHandle);
       resolved = true;
       const durationMs = Date.now() - startTime;
-      // Try to get updated session ID (might be the same or new)
-      const sessionId = extractLatestSessionId(beforeTimestamp) ?? options.sessionId;
+      // Try to parse session ID from output first (more reliable for concurrent execution)
+      // Fall back to file system scanning, then to original session ID
+      const sessionId = parseSessionIdFromOutput(stdout) ??
+                        parseSessionIdFromOutput(stderr) ??
+                        extractLatestSessionId(beforeTimestamp) ??
+                        options.sessionId;
 
       console.log(`[CODEX] Completed in ${(durationMs / 1000).toFixed(1)}s`);
 
