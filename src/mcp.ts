@@ -55,6 +55,9 @@ const registerSignalHandlers = () => {
 const main = async (): Promise<void> => {
   registerSignalHandlers();
 
+  // Redirect all console.log to stderr to keep MCP stdio transport clean
+  console.log = (...args) => console.error(...args);
+
   try {
     // 1. Start Orchestrator (HTTP API + SQLite)
     orchestratorServer = startOrchestrator();
