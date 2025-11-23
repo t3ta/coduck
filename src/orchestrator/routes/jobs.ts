@@ -47,6 +47,11 @@ const completeJobSchema = z.object({
   conversation_id: z.string().nullable().optional(),
 });
 
+const appendLogSchema = z.object({
+  stream: z.enum(['stdout', 'stderr']),
+  text: z.string(),
+});
+
 const cleanupJobsSchema = z.object({
   statuses: z.array(jobStatusEnum).optional(),
   maxAgeDays: z.number().int().nonnegative().optional(),
@@ -185,6 +190,42 @@ router.post('/cleanup', async (req, res, next) => {
       }
     }
     res.status(200).json({ deleted: result.count, jobs: result.deleted });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/logs', (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const body = appendLogSchema.parse(req.body);
+
+    const job = getJob(id);
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Append log to result_summary
+    const currentSummary = job.result_summary ? JSON.parse(job.result_summary) : {};
+    if (!currentSummary.logs) {
+      currentSummary.logs = [];
+    }
+    currentSummary.logs.push({
+      stream: body.stream,
+      text: body.text,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Update job with new logs
+    updateJobStatus(id, job.status as JobStatus, currentSummary, [job.status as JobStatus]);
+
+    // Emit SSE event
+    orchestratorEvents.emit({
+      type: 'log_appended',
+      data: { jobId: id, stream: body.stream, text: body.text },
+    });
+
+    res.status(200).json({ success: true });
   } catch (error) {
     next(error);
   }

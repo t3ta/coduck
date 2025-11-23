@@ -184,7 +184,7 @@ export class CodexWorker {
 
       worktreeContext = await this.createWorktreeImpl(repoPath, job.base_ref, job.branch_name, worktreePath);
 
-      const execution = await this.executeCodexImpl(worktreeContext.path, job.spec_json);
+      const execution = await this.executeCodexImpl(worktreeContext.path, job.spec_json, job.id);
       if (execution.sessionId) {
         sessionId = execution.sessionId;
       }

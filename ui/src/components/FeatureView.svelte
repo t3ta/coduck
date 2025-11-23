@@ -8,7 +8,7 @@
     onSelectJob?: (job: Job) => void;
   };
 
-  let { onSelectJob }: Props = $props();
+  let { onSelectJob = undefined }: Props = $props();
 
   let features = $state<Feature[]>([]);
   let expandedFeature = $state<string | null>(null);
@@ -60,6 +60,18 @@
       hour: '2-digit',
       minute: '2-digit',
     });
+  }
+
+  function getStatusColor(status: string): string {
+    const colors: Record<string, string> = {
+      pending: '#999',
+      running: '#2196F3',
+      done: '#4CAF50',
+      failed: '#f44336',
+      awaiting_input: '#FF9800',
+      cancelled: '#757575',
+    };
+    return colors[status] || '#666';
   }
 
   onMount(() => {
@@ -340,17 +352,3 @@
     text-align: right;
   }
 </style>
-
-<script lang="ts" context="module">
-  function getStatusColor(status: string): string {
-    const colors: Record<string, string> = {
-      pending: '#999',
-      running: '#2196F3',
-      done: '#4CAF50',
-      failed: '#f44336',
-      awaiting_input: '#FF9800',
-      cancelled: '#757575',
-    };
-    return colors[status] || '#666';
-  }
-</script>

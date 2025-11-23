@@ -5,6 +5,29 @@ import { join } from 'node:path';
 
 import { appConfig } from './config.js';
 
+/**
+ * Send log to Orchestrator API (best effort, no retries)
+ */
+async function sendLogToOrchestrator(
+  jobId: string,
+  stream: 'stdout' | 'stderr',
+  text: string
+): Promise<void> {
+  if (!text) return;
+
+  try {
+    const url = `http://localhost:${appConfig.orchestratorPort}/jobs/${jobId}/logs`;
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stream, text }),
+    });
+  } catch (error) {
+    // Best effort: log but don't fail the job
+    console.warn(`Failed to send log to orchestrator: ${error}`);
+  }
+}
+
 type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
 
 const DEFAULT_SANDBOX: SandboxMode = 'workspace-write';
@@ -14,6 +37,7 @@ export interface CodexExecOptions {
   worktreePath: string;
   sandbox?: SandboxMode;
   config?: Record<string, unknown>;
+  jobId?: string; // For log streaming
 }
 
 export interface CodexResumeOptions {
@@ -22,6 +46,7 @@ export interface CodexResumeOptions {
   worktreePath: string;
   sandbox?: SandboxMode;
   config?: Record<string, unknown>;
+  jobId?: string; // For log streaming
 }
 
 export interface CodexExecResult {
@@ -199,9 +224,36 @@ export const execCodex = (options: CodexExecOptions): Promise<CodexExecResult> =
     let stdout = '';
     let stderr = '';
 
+    // Buffer for log streaming (flush every 100ms)
+    let stdoutBuffer = '';
+    let stderrBuffer = '';
+    let flushTimer: NodeJS.Timeout | null = null;
+
+    const flushLogs = () => {
+      if (options.jobId) {
+        if (stdoutBuffer) {
+          sendLogToOrchestrator(options.jobId, 'stdout', stdoutBuffer);
+          stdoutBuffer = '';
+        }
+        if (stderrBuffer) {
+          sendLogToOrchestrator(options.jobId, 'stderr', stderrBuffer);
+          stderrBuffer = '';
+        }
+      }
+      flushTimer = null;
+    };
+
+    const scheduleFlush = () => {
+      if (!flushTimer) {
+        flushTimer = setTimeout(flushLogs, 100);
+      }
+    };
+
     child.stdout.on('data', (data: Buffer) => {
       const text = data.toString();
       stdout += text;
+      stdoutBuffer += text;
+      scheduleFlush();
       // Stream to console in real-time
       process.stdout.write(`[CODEX stdout] ${text}`);
     });
@@ -209,6 +261,8 @@ export const execCodex = (options: CodexExecOptions): Promise<CodexExecResult> =
     child.stderr.on('data', (data: Buffer) => {
       const text = data.toString();
       stderr += text;
+      stderrBuffer += text;
+      scheduleFlush();
       // Stream to console in real-time (this is where thinking/progress appears)
       process.stderr.write(`[CODEX stderr] ${text}`);
     });
@@ -332,15 +386,44 @@ export const resumeCodex = (options: CodexResumeOptions): Promise<CodexExecResul
     let stdout = '';
     let stderr = '';
 
+    // Buffer for log streaming (flush every 100ms)
+    let stdoutBuffer = '';
+    let stderrBuffer = '';
+    let flushTimer: NodeJS.Timeout | null = null;
+
+    const flushLogs = () => {
+      if (options.jobId) {
+        if (stdoutBuffer) {
+          sendLogToOrchestrator(options.jobId, 'stdout', stdoutBuffer);
+          stdoutBuffer = '';
+        }
+        if (stderrBuffer) {
+          sendLogToOrchestrator(options.jobId, 'stderr', stderrBuffer);
+          stderrBuffer = '';
+        }
+      }
+      flushTimer = null;
+    };
+
+    const scheduleFlush = () => {
+      if (!flushTimer) {
+        flushTimer = setTimeout(flushLogs, 100);
+      }
+    };
+
     child.stdout.on('data', (data: Buffer) => {
       const text = data.toString();
       stdout += text;
+      stdoutBuffer += text;
+      scheduleFlush();
       process.stdout.write(`[CODEX stdout] ${text}`);
     });
 
     child.stderr.on('data', (data: Buffer) => {
       const text = data.toString();
       stderr += text;
+      stderrBuffer += text;
+      scheduleFlush();
       process.stderr.write(`[CODEX stderr] ${text}`);
     });
 

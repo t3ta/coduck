@@ -8,7 +8,7 @@
     onSelectJob?: (job: Job) => void;
   };
 
-  let { onSelectJob }: Props = $props();
+  let { onSelectJob = undefined }: Props = $props();
 
   let jobs = $state<Job[]>([]);
   let loading = $state(true);

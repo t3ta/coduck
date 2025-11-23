@@ -13,9 +13,16 @@ import { initDb } from './db.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const createApp = () => {
+  console.log('=== createApp() called ===');
   const app = express();
 
   app.use(express.json());
+
+  // Request logging
+  app.use((req, res, next) => {
+    console.log(`${req.method} ${req.path}`);
+    next();
+  });
 
   // API routes
   app.use('/jobs', jobsRouter);
@@ -41,15 +48,20 @@ export const createApp = () => {
     }
     // For non-API GET requests, serve index.html
     if (req.method === 'GET') {
-      res.sendFile(path.join(publicDir, 'index.html'), (err) => {
+      return res.sendFile(path.join(publicDir, 'index.html'), (err) => {
         if (err) {
           console.error('Error sending index.html:', err);
-          next();
+          next(err);
         }
       });
-    } else {
-      next();
     }
+    next();
+  });
+
+  // 404 handler - must be after all routes
+  app.use((_req: Request, res: Response) => {
+    console.log('=== 404 handler called ===');
+    return res.status(404).json({ error: 'Not found' });
   });
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {

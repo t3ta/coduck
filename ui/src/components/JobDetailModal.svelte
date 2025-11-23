@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Job } from '../lib/types';
+  import LogViewer from './LogViewer.svelte';
 
   type Props = {
     job: Job | null;
@@ -7,6 +8,9 @@
   };
 
   let { job, onClose }: Props = $props();
+
+  type TabType = 'details' | 'logs';
+  let activeTab = $state<TabType>('details');
 
   function handleEscape(event: KeyboardEvent) {
     if (event.key === 'Escape') {
@@ -63,101 +67,122 @@
         </div>
       </div>
 
+      <div class="tab-navigation">
+        <button
+          class="tab-btn"
+          class:active={activeTab === 'details'}
+          onclick={() => (activeTab = 'details')}
+        >
+          詳細
+        </button>
+        <button
+          class="tab-btn"
+          class:active={activeTab === 'logs'}
+          onclick={() => (activeTab = 'logs')}
+        >
+          ログ
+        </button>
+      </div>
+
       <div class="modal-body">
-        <section class="section">
-          <h3>基本情報</h3>
-          <dl class="info-grid">
-            <dt>Branch:</dt>
-            <dd><code>{job.branch_name}</code></dd>
-
-            <dt>Base Ref:</dt>
-            <dd><code>{job.base_ref}</code></dd>
-
-            <dt>Repo URL:</dt>
-            <dd><code class="url">{job.repo_url}</code></dd>
-
-            <dt>Worktree Path:</dt>
-            <dd><code class="url">{job.worktree_path}</code></dd>
-
-            <dt>Worker Type:</dt>
-            <dd>{job.worker_type}</dd>
-
-            <dt>Push Mode:</dt>
-            <dd>{job.push_mode}</dd>
-
-            {#if job.feature_id}
-              <dt>Feature ID:</dt>
-              <dd>{job.feature_id}</dd>
-            {/if}
-
-            {#if job.feature_part}
-              <dt>Feature Part:</dt>
-              <dd>{job.feature_part}</dd>
-            {/if}
-
-            <dt>Created:</dt>
-            <dd>{formatDate(job.created_at)}</dd>
-
-            <dt>Updated:</dt>
-            <dd>{formatDate(job.updated_at)}</dd>
-          </dl>
-        </section>
-
-        <section class="section">
-          <h3>目標 (Goal)</h3>
-          <p class="goal">{job.spec_json.goal}</p>
-        </section>
-
-        <section class="section">
-          <h3>コンテキストファイル</h3>
-          <ul class="context-files">
-            {#each job.spec_json.context_files as file}
-              <li><code>{file}</code></li>
-            {/each}
-          </ul>
-        </section>
-
-        {#if job.spec_json.notes}
+        {#if activeTab === 'details'}
           <section class="section">
-            <h3>ノート</h3>
-            <pre class="notes">{job.spec_json.notes}</pre>
+            <h3>基本情報</h3>
+            <dl class="info-grid">
+              <dt>Branch:</dt>
+              <dd><code>{job.branch_name}</code></dd>
+
+              <dt>Base Ref:</dt>
+              <dd><code>{job.base_ref}</code></dd>
+
+              <dt>Repo URL:</dt>
+              <dd><code class="url">{job.repo_url}</code></dd>
+
+              <dt>Worktree Path:</dt>
+              <dd><code class="url">{job.worktree_path}</code></dd>
+
+              <dt>Worker Type:</dt>
+              <dd>{job.worker_type}</dd>
+
+              <dt>Push Mode:</dt>
+              <dd>{job.push_mode}</dd>
+
+              {#if job.feature_id}
+                <dt>Feature ID:</dt>
+                <dd>{job.feature_id}</dd>
+              {/if}
+
+              {#if job.feature_part}
+                <dt>Feature Part:</dt>
+                <dd>{job.feature_part}</dd>
+              {/if}
+
+              <dt>Created:</dt>
+              <dd>{formatDate(job.created_at)}</dd>
+
+              <dt>Updated:</dt>
+              <dd>{formatDate(job.updated_at)}</dd>
+            </dl>
           </section>
-        {/if}
 
-        {#if job.spec_json.constraints && job.spec_json.constraints.length > 0}
           <section class="section">
-            <h3>制約条件</h3>
-            <ul>
-              {#each job.spec_json.constraints as constraint}
-                <li>{constraint}</li>
+            <h3>目標 (Goal)</h3>
+            <p class="goal">{job.spec_json.goal}</p>
+          </section>
+
+          <section class="section">
+            <h3>コンテキストファイル</h3>
+            <ul class="context-files">
+              {#each job.spec_json.context_files as file}
+                <li><code>{file}</code></li>
               {/each}
             </ul>
           </section>
-        {/if}
 
-        {#if job.spec_json.acceptance_criteria && job.spec_json.acceptance_criteria.length > 0}
-          <section class="section">
-            <h3>受け入れ基準</h3>
-            <ul>
-              {#each job.spec_json.acceptance_criteria as criteria}
-                <li>{criteria}</li>
-              {/each}
-            </ul>
-          </section>
-        {/if}
+          {#if job.spec_json.notes}
+            <section class="section">
+              <h3>ノート</h3>
+              <pre class="notes">{job.spec_json.notes}</pre>
+            </section>
+          {/if}
 
-        {#if job.conversation_id}
-          <section class="section">
-            <h3>Conversation ID</h3>
-            <code>{job.conversation_id}</code>
-          </section>
-        {/if}
+          {#if job.spec_json.constraints && job.spec_json.constraints.length > 0}
+            <section class="section">
+              <h3>制約条件</h3>
+              <ul>
+                {#each job.spec_json.constraints as constraint}
+                  <li>{constraint}</li>
+                {/each}
+              </ul>
+            </section>
+          {/if}
 
-        {#if job.result_summary}
-          <section class="section">
-            <h3>実行結果</h3>
-            <pre class="json">{JSON.stringify(job.result_summary, null, 2)}</pre>
-          </section>
+          {#if job.spec_json.acceptance_criteria && job.spec_json.acceptance_criteria.length > 0}
+            <section class="section">
+              <h3>受け入れ基準</h3>
+              <ul>
+                {#each job.spec_json.acceptance_criteria as criteria}
+                  <li>{criteria}</li>
+                {/each}
+              </ul>
+            </section>
+          {/if}
+
+          {#if job.conversation_id}
+            <section class="section">
+              <h3>Conversation ID</h3>
+              <code>{job.conversation_id}</code>
+            </section>
+          {/if}
+
+          {#if job.result_summary}
+            <section class="section">
+              <h3>実行結果</h3>
+              <pre class="json">{JSON.stringify(job.result_summary, null, 2)}</pre>
+            </section>
+          {/if}
+        {:else if activeTab === 'logs'}
+          <LogViewer jobId={job.id} logs={job.result_summary?.logs ?? []} />
         {/if}
       </div>
     </div>
@@ -178,6 +203,36 @@
     z-index: 1000;
     padding: 2rem;
     animation: fadeIn 0.2s;
+  }
+
+  .tab-navigation {
+    display: flex;
+    gap: 0.5rem;
+    padding: 1rem 2rem 0 2rem;
+    background: white;
+    border-bottom: 1px solid #ddd;
+  }
+
+  .tab-btn {
+    padding: 0.75rem 1.5rem;
+    background: transparent;
+    border: none;
+    border-bottom: 3px solid transparent;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    color: #666;
+    transition: all 0.2s;
+  }
+
+  .tab-btn:hover {
+    color: #667eea;
+    background: rgba(102, 126, 234, 0.05);
+  }
+
+  .tab-btn.active {
+    color: #667eea;
+    border-bottom-color: #667eea;
   }
 
   @keyframes fadeIn {

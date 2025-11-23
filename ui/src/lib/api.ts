@@ -15,7 +15,8 @@ export async function listJobs(params?: {
   const url = `${API_BASE}/jobs${query.toString() ? '?' + query.toString() : ''}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch jobs: ${res.statusText}`);
-  return res.json();
+  const jobs = await res.json();
+  return { jobs };
 }
 
 export async function getJob(id: string): Promise<{ job: Job }> {
@@ -33,7 +34,8 @@ export async function deleteJob(id: string): Promise<{ job: Job }> {
 export async function listFeatures(): Promise<{ features: Feature[] }> {
   const res = await fetch(`${API_BASE}/features`);
   if (!res.ok) throw new Error(`Failed to fetch features: ${res.statusText}`);
-  return res.json();
+  const features = await res.json();
+  return { features };
 }
 
 export async function getFeature(featureId: string): Promise<FeatureDetail> {
@@ -45,7 +47,8 @@ export async function getFeature(featureId: string): Promise<FeatureDetail> {
 export async function listWorktrees(): Promise<{ worktrees: WorktreeInfo[] }> {
   const res = await fetch(`${API_BASE}/worktrees`);
   if (!res.ok) throw new Error(`Failed to fetch worktrees: ${res.statusText}`);
-  return res.json();
+  const worktrees = await res.json();
+  return { worktrees };
 }
 
 export async function deleteWorktree(encodedPath: string): Promise<void> {
