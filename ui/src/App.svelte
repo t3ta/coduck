@@ -110,7 +110,7 @@
     <button
       class="tab"
       class:active={activeTab === 'worktrees'}
-      onclick={() => (activeTab === 'worktrees')}
+      onclick={() => (activeTab = 'worktrees')}
     >
       Worktree管理
     </button>

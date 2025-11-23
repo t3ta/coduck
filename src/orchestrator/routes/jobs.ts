@@ -162,7 +162,8 @@ router.get('/:id/logs', (req, res, next) => {
       const logs = summary.logs || [];
       res.json(logs);
     } catch {
-      return res.status(500).json({ error: 'Failed to parse result_summary' });
+      // If result_summary is not valid JSON (e.g., old jobs), return empty array
+      return res.json([]);
     }
   } catch (error) {
     next(error);
