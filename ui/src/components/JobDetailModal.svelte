@@ -1,0 +1,389 @@
+<script lang="ts">
+  import type { Job } from '../lib/types';
+
+  type Props = {
+    job: Job | null;
+    onClose: () => void;
+  };
+
+  let { job, onClose }: Props = $props();
+
+  function handleEscape(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      onClose();
+    }
+  }
+
+  function handleBackdropClick(event: MouseEvent) {
+    if (event.target === event.currentTarget) {
+      onClose();
+    }
+  }
+
+  function formatDate(dateString: string): string {
+    const date = new Date(dateString);
+    return date.toLocaleString('ja-JP', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
+  }
+
+  function getStatusColor(status: string): string {
+    const colors: Record<string, string> = {
+      pending: '#999',
+      running: '#2196F3',
+      done: '#4CAF50',
+      failed: '#f44336',
+      awaiting_input: '#FF9800',
+      cancelled: '#757575',
+    };
+    return colors[status] || '#666';
+  }
+</script>
+
+<svelte:window onkeydown={handleEscape} />
+
+{#if job}
+  <div class="modal-backdrop" onclick={handleBackdropClick} role="button" tabindex="-1">
+    <div class="modal">
+      <div class="modal-header">
+        <div class="header-top">
+          <h2>ジョブ詳細</h2>
+          <button class="close-btn" onclick={onClose}>✕</button>
+        </div>
+        <div class="header-info">
+          <span class="status-badge" style="background-color: {getStatusColor(job.status)}">
+            {job.status}
+          </span>
+          <code class="job-id">{job.id}</code>
+        </div>
+      </div>
+
+      <div class="modal-body">
+        <section class="section">
+          <h3>基本情報</h3>
+          <dl class="info-grid">
+            <dt>Branch:</dt>
+            <dd><code>{job.branch_name}</code></dd>
+
+            <dt>Base Ref:</dt>
+            <dd><code>{job.base_ref}</code></dd>
+
+            <dt>Repo URL:</dt>
+            <dd><code class="url">{job.repo_url}</code></dd>
+
+            <dt>Worktree Path:</dt>
+            <dd><code class="url">{job.worktree_path}</code></dd>
+
+            <dt>Worker Type:</dt>
+            <dd>{job.worker_type}</dd>
+
+            <dt>Push Mode:</dt>
+            <dd>{job.push_mode}</dd>
+
+            {#if job.feature_id}
+              <dt>Feature ID:</dt>
+              <dd>{job.feature_id}</dd>
+            {/if}
+
+            {#if job.feature_part}
+              <dt>Feature Part:</dt>
+              <dd>{job.feature_part}</dd>
+            {/if}
+
+            <dt>Created:</dt>
+            <dd>{formatDate(job.created_at)}</dd>
+
+            <dt>Updated:</dt>
+            <dd>{formatDate(job.updated_at)}</dd>
+          </dl>
+        </section>
+
+        <section class="section">
+          <h3>目標 (Goal)</h3>
+          <p class="goal">{job.spec_json.goal}</p>
+        </section>
+
+        <section class="section">
+          <h3>コンテキストファイル</h3>
+          <ul class="context-files">
+            {#each job.spec_json.context_files as file}
+              <li><code>{file}</code></li>
+            {/each}
+          </ul>
+        </section>
+
+        {#if job.spec_json.notes}
+          <section class="section">
+            <h3>ノート</h3>
+            <pre class="notes">{job.spec_json.notes}</pre>
+          </section>
+        {/if}
+
+        {#if job.spec_json.constraints && job.spec_json.constraints.length > 0}
+          <section class="section">
+            <h3>制約条件</h3>
+            <ul>
+              {#each job.spec_json.constraints as constraint}
+                <li>{constraint}</li>
+              {/each}
+            </ul>
+          </section>
+        {/if}
+
+        {#if job.spec_json.acceptance_criteria && job.spec_json.acceptance_criteria.length > 0}
+          <section class="section">
+            <h3>受け入れ基準</h3>
+            <ul>
+              {#each job.spec_json.acceptance_criteria as criteria}
+                <li>{criteria}</li>
+              {/each}
+            </ul>
+          </section>
+        {/if}
+
+        {#if job.conversation_id}
+          <section class="section">
+            <h3>Conversation ID</h3>
+            <code>{job.conversation_id}</code>
+          </section>
+        {/if}
+
+        {#if job.result_summary}
+          <section class="section">
+            <h3>実行結果</h3>
+            <pre class="json">{JSON.stringify(job.result_summary, null, 2)}</pre>
+          </section>
+        {/if}
+      </div>
+    </div>
+  </div>
+{/if}
+
+<style>
+  .modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 2rem;
+    animation: fadeIn 0.2s;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  .modal {
+    background: white;
+    border-radius: 12px;
+    max-width: 900px;
+    width: 100%;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+    animation: slideUp 0.3s;
+  }
+
+  @keyframes slideUp {
+    from {
+      transform: translateY(20px);
+      opacity: 0;
+    }
+    to {
+      transform: translateY(0);
+      opacity: 1;
+    }
+  }
+
+  .modal-header {
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid #ddd;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+
+  .header-top h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+  }
+
+  .close-btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+  }
+
+  .close-btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  .header-info {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .status-badge {
+    padding: 0.375rem 0.75rem;
+    border-radius: 12px;
+    color: white;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+
+  .job-id {
+    font-family: monospace;
+    font-size: 0.875rem;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 0.375rem 0.75rem;
+    border-radius: 4px;
+  }
+
+  .modal-body {
+    padding: 2rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .section h3 {
+    margin: 0;
+    font-size: 1.125rem;
+    color: #333;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #667eea;
+  }
+
+  .info-grid {
+    display: grid;
+    grid-template-columns: 150px 1fr;
+    gap: 0.75rem 1rem;
+    margin: 0;
+  }
+
+  .info-grid dt {
+    font-weight: 500;
+    color: #666;
+  }
+
+  .info-grid dd {
+    margin: 0;
+    color: #333;
+  }
+
+  .info-grid code {
+    background: #f5f5f5;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.875rem;
+  }
+
+  .info-grid code.url {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  .goal {
+    margin: 0;
+    padding: 1rem;
+    background: #f5f5f5;
+    border-left: 4px solid #667eea;
+    border-radius: 4px;
+    line-height: 1.6;
+  }
+
+  .context-files {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .context-files li {
+    padding: 0.5rem;
+    background: #f5f5f5;
+    border-radius: 4px;
+  }
+
+  .context-files code {
+    font-size: 0.875rem;
+  }
+
+  .notes {
+    margin: 0;
+    padding: 1rem;
+    background: #f5f5f5;
+    border-radius: 4px;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+
+  .json {
+    margin: 0;
+    padding: 1rem;
+    background: #2d2d2d;
+    color: #f8f8f2;
+    border-radius: 4px;
+    overflow-x: auto;
+    font-size: 0.875rem;
+    line-height: 1.5;
+  }
+
+  ul {
+    margin: 0;
+    padding-left: 1.5rem;
+  }
+
+  ul li {
+    line-height: 1.6;
+    margin-bottom: 0.25rem;
+  }
+</style>
