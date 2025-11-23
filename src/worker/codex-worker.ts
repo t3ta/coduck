@@ -285,12 +285,15 @@ export class CodexWorker {
       return existingLock;
     }
 
-    const repoExists = await pathExists(path.join(repoPath, '.git'));
-    if (repoExists) {
-      return repoPath;
-    }
+    const clonePromise = (async () => {
+      const repoExists = await pathExists(path.join(repoPath, '.git'));
+      if (repoExists) {
+        return repoPath;
+      }
 
-    const clonePromise = this.performClone(repoLocation, repoPath);
+      return this.performClone(repoLocation, repoPath);
+    })();
+
     this.cloneLocks.set(repoPath, clonePromise);
 
     try {
