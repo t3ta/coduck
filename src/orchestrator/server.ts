@@ -31,11 +31,12 @@ export const createApp = () => {
   return app;
 };
 
-export const startServer = () => {
-  initDb();
-  const app = createApp();
-  const server = app.listen(appConfig.orchestratorPort, () => {
-    console.log(`Orchestrator listening on port ${appConfig.orchestratorPort}`);
+export const startServer = (): Promise<import('http').Server> => {
+  return new Promise((resolve) => {
+    initDb();
+    const app = createApp();
+    const server = app.listen(appConfig.orchestratorPort, () => {
+      resolve(server);
+    });
   });
-  return server;
 };

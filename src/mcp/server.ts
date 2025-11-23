@@ -31,9 +31,5 @@ export const startServer = async (): Promise<void> => {
   const server = createServer();
   const transport = new StdioServerTransport();
 
-  server.server.oninitialized = () => {
-    console.log('MCP server initialized and ready for tool calls.');
-  };
-
   await server.connect(transport);
 };

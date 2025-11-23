@@ -1,0 +1,11 @@
+node_modules
+.git
+.gitignore
+*.md
+tests
+docs
+worktrees
+logs
+.env
+orchestrator.sqlite-shm
+orchestrator.sqlite-wal

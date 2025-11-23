@@ -66,39 +66,170 @@ CODEX_CLI_PATH=codex
 
 ## Usage
 
-### Start Orchestrator
+### Quick Start (Recommended)
+
+Start Orchestrator and Worker as background services:
 
 ```bash
-npm run orchestrator
+# Build the project
+npm run build
+
+# Start Orchestrator (Docker)
+docker-compose up -d
+
+# Start Worker (PM2)
+npm install -g pm2
+pm2 start ecosystem.config.cjs
+pm2 save
+pm2 startup  # Follow instructions to enable startup on boot
 ```
 
-### Start Worker
+Check status:
+```bash
+docker-compose ps          # Check Orchestrator
+pm2 status                 # Check Worker
+pm2 logs coduck-worker    # View Worker logs
+```
+
+Stop services:
+```bash
+docker-compose down        # Stop Orchestrator
+pm2 stop coduck-worker     # Stop Worker
+```
+
+### Manual Start (Development)
 
 ```bash
+# Terminal 1: Orchestrator
+npm run orchestrator
+
+# Terminal 2: Worker
 npm run worker
 ```
 
 ### Start MCP Server
 
+**Note**: MCP Server is started automatically by Claude Code for each project. You don't need to run it manually.
+
 ```bash
+# Only for testing
 npm run mcp
 ```
 
 ### Register MCP Server with Claude Code
 
-Add to `~/.claude/config.json`:
+#### 1. Build the project
+
+```bash
+npm run build
+```
+
+#### 2. Register MCP server
+
+Add to `~/.claude.json` (create if it doesn't exist):
+
+**For a single project (coduck itself):**
+
+```json
+{
+  "projects": {
+    "/home/user/workspace/coduck": {
+      "mcpServers": {
+        "coduck-orchestrator": {
+          "type": "stdio",
+          "command": "node",
+          "args": ["/home/user/workspace/coduck/dist/mcp.js"],
+          "env": {
+            "ORCHESTRATOR_URL": "http://localhost:3000"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+**For multiple projects:**
+
+```json
+{
+  "projects": {
+    "/home/user/workspace/my-app": {
+      "mcpServers": {
+        "coduck-orchestrator": {
+          "type": "stdio",
+          "command": "node",
+          "args": ["/home/user/workspace/coduck/dist/mcp.js"],
+          "env": {
+            "ORCHESTRATOR_URL": "http://localhost:3000",
+            "WORKTREE_BASE_DIR": "/home/user/workspace/my-app/.coduck/worktrees"
+          },
+          "cwd": "/home/user/workspace/my-app"
+        }
+      }
+    },
+    "/home/user/workspace/another-project": {
+      "mcpServers": {
+        "coduck-orchestrator": {
+          "type": "stdio",
+          "command": "node",
+          "args": ["/home/user/workspace/coduck/dist/mcp.js"],
+          "env": {
+            "ORCHESTRATOR_URL": "http://localhost:3000",
+            "WORKTREE_BASE_DIR": "/home/user/workspace/another-project/.coduck/worktrees"
+          },
+          "cwd": "/home/user/workspace/another-project"
+        }
+      }
+    }
+  }
+}
+```
+
+**For all projects (global):**
 
 ```json
 {
   "mcpServers": {
     "coduck-orchestrator": {
+      "type": "stdio",
       "command": "node",
-      "args": ["/path/to/coduck/dist/mcp.js"],
-      "env": {}
+      "args": ["/home/user/workspace/coduck/dist/mcp.js"],
+      "env": {
+        "ORCHESTRATOR_URL": "http://localhost:3000"
+      }
     }
   }
 }
 ```
+
+**Important**:
+- **All paths must be absolute**, not relative
+- **`cwd`**: Sets the working directory where git commands run (detects `git remote` from this directory)
+- **`WORKTREE_BASE_DIR`**: Isolates worktrees per project (recommended: `<project>/.coduck/worktrees`)
+- **Without `cwd`**: All jobs will use the coduck repository itself
+- **Without `WORKTREE_BASE_DIR`**: All projects share the same worktree directory (not recommended)
+- Make sure Orchestrator and Worker are running before using MCP tools
+
+#### 3. Restart Claude Code
+
+After editing `~/.claude.json`, restart Claude Code to load the new configuration.
+
+#### 4. Verify connection
+
+In Claude Code, use the `/mcp` command to check the connection status. You should see:
+
+```
+Reconnected to coduck-orchestrator.
+```
+
+#### Available MCP Tools
+
+Once connected, you can use these tools in Claude Code:
+
+- **Job Management**: `enqueue_codex_job`, `list_jobs`, `get_job`, `delete_job`, `cleanup_jobs`, `continue_codex_job`
+- **Worktree Management**: `list_worktrees`, `cleanup_worktrees`, `delete_worktree`
+- **Checkout**: `checkout_job_worktree` - Open job worktree in new Claude Code window
 
 ## Cleanup
 
