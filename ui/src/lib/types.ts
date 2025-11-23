@@ -69,3 +69,9 @@ export interface WorktreeCleanupResponse {
   failures: Array<{ path: string; error: string }>;
   skipped: Array<{ path: string; reason: string }>;
 }
+
+export interface LogEntry {
+  stream: 'stdout' | 'stderr';
+  text: string;
+  timestamp: string;
+}

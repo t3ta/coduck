@@ -110,7 +110,25 @@ router.get('/', (req, res, next) => {
     if (validatedQuery.worker_type) filter.worker_type = validatedQuery.worker_type;
     if (validatedQuery.feature_id) filter.feature_id = validatedQuery.feature_id;
     const jobs = listJobs(filter);
-    res.json(jobs);
+
+    // Exclude logs from result_summary for all jobs
+    const jobsWithoutLogs = jobs.map((job) => {
+      const jobWithoutLogs = { ...job };
+      if (jobWithoutLogs.result_summary) {
+        try {
+          const summary = JSON.parse(jobWithoutLogs.result_summary);
+          if (summary.logs) {
+            delete summary.logs;
+            jobWithoutLogs.result_summary = JSON.stringify(summary);
+          }
+        } catch {
+          // Keep original if JSON parsing fails
+        }
+      }
+      return jobWithoutLogs;
+    });
+
+    res.json(jobsWithoutLogs);
   } catch (error) {
     next(error);
   }
@@ -122,7 +140,46 @@ router.get('/:id', (req, res, next) => {
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
     }
-    res.json(job);
+
+    // Exclude logs from result_summary to reduce payload size
+    const jobWithoutLogs = { ...job };
+    if (jobWithoutLogs.result_summary) {
+      try {
+        const summary = JSON.parse(jobWithoutLogs.result_summary);
+        if (summary.logs) {
+          delete summary.logs;
+          jobWithoutLogs.result_summary = JSON.stringify(summary);
+        }
+      } catch {
+        // Keep original if JSON parsing fails
+      }
+    }
+
+    res.json(jobWithoutLogs);
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id/logs', (req, res, next) => {
+  try {
+    const job = getJob(req.params.id);
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Extract logs from result_summary
+    if (!job.result_summary) {
+      return res.json([]);
+    }
+
+    try {
+      const summary = JSON.parse(job.result_summary);
+      const logs = summary.logs || [];
+      res.json(logs);
+    } catch {
+      return res.status(500).json({ error: 'Failed to parse result_summary' });
+    }
   } catch (error) {
     next(error);
   }

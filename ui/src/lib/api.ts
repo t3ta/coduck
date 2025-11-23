@@ -2,6 +2,7 @@ import type {
   Job,
   Feature,
   FeatureDetail,
+  LogEntry,
   WorktreeCleanupResponse,
   WorktreeInfo,
 } from './types';
@@ -27,6 +28,12 @@ export async function listJobs(params?: {
 export async function getJob(id: string): Promise<{ job: Job }> {
   const res = await fetch(`${API_BASE}/jobs/${id}`);
   if (!res.ok) throw new Error(`Failed to fetch job: ${res.statusText}`);
+  return res.json();
+}
+
+export async function getJobLogs(id: string): Promise<LogEntry[]> {
+  const res = await fetch(`${API_BASE}/jobs/${id}/logs`);
+  if (!res.ok) throw new Error(`Failed to fetch job logs: ${res.statusText}`);
   return res.json();
 }
 

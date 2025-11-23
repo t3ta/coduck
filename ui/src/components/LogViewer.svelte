@@ -1,17 +1,20 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { sseClient } from '../lib/sse';
+  import { getJobLogs } from '../lib/api';
+  import type { LogEntry } from '../lib/types';
 
   type Props = {
     jobId: string;
-    logs?: Array<{ stream: 'stdout' | 'stderr'; text: string; timestamp: string }>;
   };
 
-  let { jobId, logs = [] }: Props = $props();
+  let { jobId }: Props = $props();
 
   type StreamFilter = 'all' | 'stdout' | 'stderr';
   let streamFilter = $state<StreamFilter>('all');
-  let logLines = $state<Array<{ stream: 'stdout' | 'stderr'; text: string; timestamp: string }>>(logs);
+  let logLines = $state<LogEntry[]>([]);
+  let loading = $state(true);
+  let error = $state<string | null>(null);
   let autoScroll = $state(true);
   let logContainer: HTMLDivElement;
 
@@ -33,7 +36,19 @@
     setTimeout(scrollToBottom, 0);
   });
 
-  onMount(() => {
+  onMount(async () => {
+    // Fetch logs on mount
+    try {
+      loading = true;
+      logLines = await getJobLogs(jobId);
+      error = null;
+    } catch (err) {
+      error = err instanceof Error ? err.message : 'Failed to load logs';
+    } finally {
+      loading = false;
+    }
+
+    // Listen for new logs via SSE
     const unsubscribe = sseClient.on((event) => {
       if (event.type === 'log_appended' && event.data.jobId === jobId) {
         logLines = [
@@ -85,7 +100,11 @@
   </div>
 
   <div class="log-container" bind:this={logContainer}>
-    {#if filteredLogs.length === 0}
+    {#if loading}
+      <div class="empty-message">Loading logs...</div>
+    {:else if error}
+      <div class="empty-message error">{error}</div>
+    {:else if filteredLogs.length === 0}
       <div class="empty-message">No logs available</div>
     {:else}
       {#each filteredLogs as log (log.timestamp + log.text)}
@@ -169,6 +188,10 @@
     padding: 2rem;
     text-align: center;
     color: #999;
+  }
+
+  .empty-message.error {
+    color: #f44336;
   }
 
   .log-line {
