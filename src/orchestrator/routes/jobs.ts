@@ -236,10 +236,25 @@ router.post('/:id/complete', (req, res, next) => {
     const { id } = req.params;
     const body = completeJobSchema.parse(req.body);
     const hasConversationId = Object.hasOwn(body, 'conversation_id');
+
+    // Preserve logs from the existing result_summary
+    const existingJob = getJob(id);
+    let finalSummary = body.result_summary;
+    if (existingJob?.result_summary) {
+      try {
+        const existing = JSON.parse(existingJob.result_summary);
+        if (existing.logs && Array.isArray(existing.logs)) {
+          finalSummary = { ...body.result_summary, logs: existing.logs };
+        }
+      } catch {
+        // Ignore JSON parse errors
+      }
+    }
+
     updateJobStatus(
       id,
       body.status,
-      body.result_summary,
+      finalSummary,
       ['running', 'awaiting_input'],
       hasConversationId ? body.conversation_id ?? null : undefined
     );

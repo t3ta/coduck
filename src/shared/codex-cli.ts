@@ -17,6 +17,7 @@ async function sendLogToOrchestrator(
 
   try {
     const url = `http://localhost:${appConfig.orchestratorPort}/jobs/${jobId}/logs`;
+    console.log(`[LOG STREAM] Sending ${stream} log for job ${jobId}: ${text.length} chars`);
     await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -285,6 +286,13 @@ export const execCodex = (options: CodexExecOptions): Promise<CodexExecResult> =
       clearTimeout(timeoutHandle);
       resolved = true;
       const durationMs = Date.now() - startTime;
+
+      // Flush any remaining logs before closing
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+      }
+      flushLogs();
+
       // Try to parse session ID from output first (more reliable for concurrent execution)
       // Fall back to file system scanning if not found
       const sessionId = parseSessionIdFromOutput(stdout) ??
@@ -445,6 +453,13 @@ export const resumeCodex = (options: CodexResumeOptions): Promise<CodexExecResul
       clearTimeout(timeoutHandle);
       resolved = true;
       const durationMs = Date.now() - startTime;
+
+      // Flush any remaining logs before closing
+      if (flushTimer) {
+        clearTimeout(flushTimer);
+      }
+      flushLogs();
+
       // Try to parse session ID from output first (more reliable for concurrent execution)
       // Fall back to file system scanning, then to original session ID
       const sessionId = parseSessionIdFromOutput(stdout) ??
