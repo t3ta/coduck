@@ -99,6 +99,9 @@ const buildCodexConfig = (userConfig?: Record<string, unknown>): Record<string, 
     ...userConfig,
   };
 
+  // Force approval_policy to 'never' for automated execution
+  config.approval_policy = 'never';
+
   // Add reasoning settings from environment if not already specified
   if (appConfig.codexReasoningSummary && !config.model_reasoning_summary) {
     config.model_reasoning_summary = appConfig.codexReasoningSummary;
