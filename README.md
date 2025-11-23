@@ -96,15 +96,17 @@ npm run build
 
 Add to `~/.claude.json` (create if it doesn't exist):
 
+**For a single project (coduck itself):**
+
 ```json
 {
   "projects": {
-    "/absolute/path/to/coduck": {
+    "/home/user/workspace/coduck": {
       "mcpServers": {
         "coduck-orchestrator": {
           "type": "stdio",
           "command": "node",
-          "args": ["/absolute/path/to/coduck/dist/mcp.js"],
+          "args": ["/home/user/workspace/coduck/dist/mcp.js"],
           "env": {
             "ORCHESTRATOR_URL": "http://localhost:3000"
           }
@@ -115,9 +117,66 @@ Add to `~/.claude.json` (create if it doesn't exist):
 }
 ```
 
+**For multiple projects:**
+
+```json
+{
+  "projects": {
+    "/home/user/workspace/my-app": {
+      "mcpServers": {
+        "coduck-orchestrator": {
+          "type": "stdio",
+          "command": "node",
+          "args": ["/home/user/workspace/coduck/dist/mcp.js"],
+          "env": {
+            "ORCHESTRATOR_URL": "http://localhost:3000",
+            "WORKTREE_BASE_DIR": "/home/user/workspace/my-app/.coduck/worktrees"
+          },
+          "cwd": "/home/user/workspace/my-app"
+        }
+      }
+    },
+    "/home/user/workspace/another-project": {
+      "mcpServers": {
+        "coduck-orchestrator": {
+          "type": "stdio",
+          "command": "node",
+          "args": ["/home/user/workspace/coduck/dist/mcp.js"],
+          "env": {
+            "ORCHESTRATOR_URL": "http://localhost:3000",
+            "WORKTREE_BASE_DIR": "/home/user/workspace/another-project/.coduck/worktrees"
+          },
+          "cwd": "/home/user/workspace/another-project"
+        }
+      }
+    }
+  }
+}
+```
+
+**For all projects (global):**
+
+```json
+{
+  "mcpServers": {
+    "coduck-orchestrator": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["/home/user/workspace/coduck/dist/mcp.js"],
+      "env": {
+        "ORCHESTRATOR_URL": "http://localhost:3000"
+      }
+    }
+  }
+}
+```
+
 **Important**:
-- Replace `/absolute/path/to/coduck` with your actual project path
-- The path must be absolute, not relative
+- **All paths must be absolute**, not relative
+- **`cwd`**: Sets the working directory where git commands run (detects `git remote` from this directory)
+- **`WORKTREE_BASE_DIR`**: Isolates worktrees per project (recommended: `<project>/.coduck/worktrees`)
+- **Without `cwd`**: All jobs will use the coduck repository itself
+- **Without `WORKTREE_BASE_DIR`**: All projects share the same worktree directory (not recommended)
 - Make sure Orchestrator and Worker are running before using MCP tools
 
 #### 3. Restart Claude Code
