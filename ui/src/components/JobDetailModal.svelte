@@ -178,7 +178,16 @@
           {#if job.result_summary}
             <section class="section">
               <h3>実行結果</h3>
-              <pre class="json">{JSON.stringify(job.result_summary, null, 2)}</pre>
+              <pre class="json">{(() => {
+                try {
+                  const parsed = typeof job.result_summary === 'string'
+                    ? JSON.parse(job.result_summary)
+                    : job.result_summary;
+                  return JSON.stringify(parsed, null, 2);
+                } catch {
+                  return job.result_summary;
+                }
+              })()}</pre>
             </section>
           {/if}
         {:else if activeTab === 'logs'}
