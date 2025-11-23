@@ -16,8 +16,19 @@ COPY package*.json ./
 # Install dependencies
 RUN npm ci --only=production
 
-# Copy source and built files
-COPY dist ./dist
+# Install dev dependencies needed for the build step
+RUN npm install --include=dev --no-save --package-lock=false
+
+# Copy the project sources for the build step
+COPY . .
+
+# Build TypeScript to dist/
+RUN npm run build
+
+# Drop build-only packages to keep the final image lean
+RUN npm prune --production
+
+# Copy runtime artifacts (dist already built)
 COPY orchestrator.sqlite* ./
 
 # Create worktrees directory
