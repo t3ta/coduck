@@ -59,8 +59,8 @@ const main = async (): Promise<void> => {
   registerSignalHandlers();
 
   try {
-    // Start Orchestrator (HTTP API + SQLite) BEFORE MCP server
-    orchestratorServer = startOrchestrator();
+    // Start Orchestrator (HTTP API + SQLite) and wait for it to be ready
+    orchestratorServer = await startOrchestrator();
 
     // Start Worker (job polling) BEFORE MCP server
     worker = new CodexWorker();
