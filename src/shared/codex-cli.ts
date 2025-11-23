@@ -16,7 +16,7 @@ async function sendLogToOrchestrator(
   if (!text) return;
 
   try {
-    const url = `http://localhost:${appConfig.orchestratorPort}/jobs/${jobId}/logs`;
+    const url = `${appConfig.orchestratorUrl}/jobs/${jobId}/logs`;
     console.log(`[LOG STREAM] Sending ${stream} log for job ${jobId}: ${text.length} chars`);
     await fetch(url, {
       method: 'POST',

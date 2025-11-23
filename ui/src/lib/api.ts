@@ -25,7 +25,7 @@ export async function listJobs(params?: {
   return res.json();
 }
 
-export async function getJob(id: string): Promise<{ job: Job }> {
+export async function getJob(id: string): Promise<Job> {
   const res = await fetch(`${API_BASE}/jobs/${id}`);
   if (!res.ok) throw new Error(`Failed to fetch job: ${res.statusText}`);
   return res.json();
@@ -37,7 +37,7 @@ export async function getJobLogs(id: string): Promise<LogEntry[]> {
   return res.json();
 }
 
-export async function deleteJob(id: string): Promise<{ job: Job }> {
+export async function deleteJob(id: string): Promise<Job> {
   const res = await fetch(`${API_BASE}/jobs/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`Failed to delete job: ${res.statusText}`);
   return res.json();

@@ -182,7 +182,7 @@
             </section>
           {/if}
         {:else if activeTab === 'logs'}
-          <LogViewer jobId={job.id} logs={job.result_summary?.logs ?? []} />
+          <LogViewer jobId={job.id} />
         {/if}
       </div>
     </div>
