@@ -66,21 +66,53 @@ CODEX_CLI_PATH=codex
 
 ## Usage
 
-### Start Orchestrator
+### Quick Start (Recommended)
+
+Start Orchestrator and Worker as background services:
 
 ```bash
-npm run orchestrator
+# Build the project
+npm run build
+
+# Start Orchestrator (Docker)
+docker-compose up -d
+
+# Start Worker (PM2)
+npm install -g pm2
+pm2 start ecosystem.config.cjs
+pm2 save
+pm2 startup  # Follow instructions to enable startup on boot
 ```
 
-### Start Worker
+Check status:
+```bash
+docker-compose ps          # Check Orchestrator
+pm2 status                 # Check Worker
+pm2 logs coduck-worker    # View Worker logs
+```
+
+Stop services:
+```bash
+docker-compose down        # Stop Orchestrator
+pm2 stop coduck-worker     # Stop Worker
+```
+
+### Manual Start (Development)
 
 ```bash
+# Terminal 1: Orchestrator
+npm run orchestrator
+
+# Terminal 2: Worker
 npm run worker
 ```
 
 ### Start MCP Server
 
+**Note**: MCP Server is started automatically by Claude Code for each project. You don't need to run it manually.
+
 ```bash
+# Only for testing
 npm run mcp
 ```
 

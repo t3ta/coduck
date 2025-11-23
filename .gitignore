@@ -9,3 +9,5 @@ worktrees/
 
 .npm-cache/
 .serena/
+logs/
+orchestrator.sqlite*
