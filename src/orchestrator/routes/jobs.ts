@@ -248,11 +248,19 @@ router.post('/:id/logs', (req, res, next) => {
     }
 
     // Append log to result_summary
-    const currentSummary = job.result_summary ? JSON.parse(job.result_summary) : {};
+    let currentSummary: Record<string, unknown> = {};
+    if (job.result_summary) {
+      try {
+        currentSummary = JSON.parse(job.result_summary);
+      } catch {
+        // If result_summary is not valid JSON (e.g., old jobs), start fresh
+        currentSummary = {};
+      }
+    }
     if (!currentSummary.logs) {
       currentSummary.logs = [];
     }
-    currentSummary.logs.push({
+    (currentSummary.logs as Array<Record<string, unknown>>).push({
       stream: body.stream,
       text: body.text,
       timestamp: new Date().toISOString(),
