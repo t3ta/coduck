@@ -13,7 +13,7 @@
     try {
       loading = true;
       const result = await listWorktrees();
-      worktrees = result.worktrees;
+      worktrees = result;
       error = null;
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to fetch worktrees';
@@ -51,7 +51,16 @@
     try {
       loading = true;
       const result = await cleanupWorktrees();
-      alert(`${result.deleted.length}個のworktreeを削除しました`);
+      const messages = [
+        `${result.removed.length}個のworktreeを削除しました`,
+        result.failures.length
+          ? `失敗: ${result.failures.map(({ path, error }) => `${path} (${error})`).join(', ')}`
+          : null,
+        result.skipped.length
+          ? `スキップ: ${result.skipped.map(({ path, reason }) => `${path} (${reason})`).join(', ')}`
+          : null,
+      ].filter(Boolean) as string[];
+      alert(messages.join('\n'));
       await fetchWorktrees();
     } catch (err) {
       alert(`クリーンアップに失敗しました: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -82,8 +91,8 @@
     return colors[status] || '#666';
   }
 
-  function canDelete(status: string): boolean {
-    return status === 'orphaned' || status === 'unmanaged';
+  function canDelete(worktree: WorktreeInfo): boolean {
+    return worktree.deletable;
   }
 
   onMount(() => {
@@ -121,11 +130,11 @@
       {#each worktrees as worktree (worktree.path)}
         <div class="worktree-card">
           <div class="worktree-header">
-            <span class="status-badge" style="background-color: {getStatusColor(worktree.status)}">
-              {getStatusLabel(worktree.status)}
+            <span class="status-badge" style="background-color: {getStatusColor(worktree.state)}">
+              {getStatusLabel(worktree.state)}
             </span>
             <code class="path">{worktree.path}</code>
-            {#if canDelete(worktree.status)}
+            {#if canDelete(worktree)}
               <button
                 class="delete-btn"
                 onclick={() => handleDelete(worktree.path)}
@@ -146,7 +155,9 @@
                     <span class="job-status" style="color: {getStatusColor(job.status)}">
                       {job.status}
                     </span>
-                    <span class="job-branch">{job.branch_name}</span>
+                    {#if worktree.branch}
+                      <span class="job-branch">{worktree.branch}</span>
+                    {/if}
                   </li>
                 {/each}
               </ul>

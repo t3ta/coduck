@@ -20,7 +20,7 @@
     try {
       loading = true;
       const result = await listFeatures();
-      features = result.features;
+      features = result;
       error = null;
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to fetch features';
@@ -47,9 +47,13 @@
     }
   }
 
+  function getStatusCount(feature: Feature, status: string): number {
+    return feature.status_counts[status] || 0;
+  }
+
   function getProgressPercent(feature: Feature): number {
-    if (feature.total_jobs === 0) return 0;
-    return Math.round((feature.done / feature.total_jobs) * 100);
+    if (feature.job_count === 0) return 0;
+    return Math.round((getStatusCount(feature, 'done') / feature.job_count) * 100);
   }
 
   function formatDate(dateString: string): string {
@@ -110,7 +114,7 @@
           <button class="feature-header" onclick={() => toggleFeature(feature.feature_id)}>
             <div class="feature-title">
               <h3>{feature.feature_id}</h3>
-              <span class="job-count">{feature.total_jobs} jobs</span>
+              <span class="job-count">{feature.job_count} jobs</span>
             </div>
             <div class="feature-stats">
               <div class="progress-bar">
@@ -120,18 +124,18 @@
                 ></div>
               </div>
               <div class="stat-badges">
-                {#if feature.pending > 0}
-                  <span class="badge pending">{feature.pending} pending</span>
+                {#if getStatusCount(feature, 'pending') > 0}
+                  <span class="badge pending">{getStatusCount(feature, 'pending')} pending</span>
                 {/if}
-                {#if feature.running > 0}
-                  <span class="badge running">{feature.running} running</span>
+                {#if getStatusCount(feature, 'running') > 0}
+                  <span class="badge running">{getStatusCount(feature, 'running')} running</span>
                 {/if}
-                {#if feature.awaiting_input > 0}
-                  <span class="badge awaiting">{feature.awaiting_input} awaiting</span>
+                {#if getStatusCount(feature, 'awaiting_input') > 0}
+                  <span class="badge awaiting">{getStatusCount(feature, 'awaiting_input')} awaiting</span>
                 {/if}
-                <span class="badge done">{feature.done} done</span>
-                {#if feature.failed > 0}
-                  <span class="badge failed">{feature.failed} failed</span>
+                <span class="badge done">{getStatusCount(feature, 'done')} done</span>
+                {#if getStatusCount(feature, 'failed') > 0}
+                  <span class="badge failed">{getStatusCount(feature, 'failed')} failed</span>
                 {/if}
               </div>
             </div>

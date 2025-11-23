@@ -27,8 +27,7 @@
   async function fetchJobs() {
     try {
       loading = true;
-      const result = await listJobs();
-      jobs = result.jobs;
+      jobs = await listJobs();
       error = null;
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to fetch jobs';
