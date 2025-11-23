@@ -1,6 +1,13 @@
 import dotenv from 'dotenv';
 
-dotenv.config();
+// Suppress stdout pollution to keep MCP stdio clean
+// MCP uses stdio for JSON-RPC communication, so ANY output to stdout will break the protocol
+// We redirect console.log to console.error, but keep process.stdout.write intact
+// so that the MCP SDK can write JSON-RPC messages to stdout
+console.log = console.error;
+
+// Use quiet mode to suppress dotenv banner messages
+dotenv.config({ debug: false, quiet: true });
 
 export interface AppConfig {
   worktreeBaseDir: string;

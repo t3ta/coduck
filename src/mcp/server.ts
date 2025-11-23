@@ -7,17 +7,10 @@ import { registerCheckoutTool } from './tools/checkout-tool.js';
 import { OrchestratorClient } from './orchestrator-client.js';
 
 export const createServer = (): McpServer => {
-  const server = new McpServer(
-    {
-      name: 'coduck-orchestrator',
-      version: '1.0.0',
-    },
-    {
-      capabilities: {
-        tools: {},
-      },
-    },
-  );
+  const server = new McpServer({
+    name: 'coduck-orchestrator',
+    version: '1.0.0',
+  });
 
   const orchestratorClient = new OrchestratorClient();
   registerJobTools(server, orchestratorClient);
@@ -30,10 +23,6 @@ export const createServer = (): McpServer => {
 export const startServer = async (): Promise<void> => {
   const server = createServer();
   const transport = new StdioServerTransport();
-
-  server.server.oninitialized = () => {
-    console.log('MCP server initialized and ready for tool calls.');
-  };
 
   await server.connect(transport);
 };

@@ -1,3 +1,6 @@
+// Import config FIRST to redirect stdout before any other modules load
+import './shared/config.js';
+
 import type { Server } from 'http';
 
 import { startServer as startMcpServer } from './mcp/server.js';
@@ -55,16 +58,12 @@ const registerSignalHandlers = () => {
 const main = async (): Promise<void> => {
   registerSignalHandlers();
 
-  // Redirect all console.log to stderr to keep MCP stdio transport clean
-  console.log = (...args) => console.error(...args);
-
   try {
-    // 1. Start Orchestrator (HTTP API + SQLite)
+    // Start Orchestrator (HTTP API + SQLite) BEFORE MCP server
     orchestratorServer = startOrchestrator();
 
-    // 2. Start Worker (job polling)
+    // Start Worker (job polling) BEFORE MCP server
     worker = new CodexWorker();
-    // Start worker in background (don't await - it polls indefinitely)
     workerPromise = worker.start().catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
       console.error(`Worker error: ${message}`);
@@ -72,7 +71,7 @@ const main = async (): Promise<void> => {
     });
     console.log('Worker started.');
 
-    // 3. Start MCP Server (stdio transport - blocks until closed)
+    // Start MCP Server last (blocks until closed)
     await startMcpServer();
 
     // MCP server closed normally, shutdown other services
