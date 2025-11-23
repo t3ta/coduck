@@ -64,6 +64,22 @@ const toFilterValue = (value: unknown): string | undefined => {
   return typeof value === 'string' ? value : undefined;
 };
 
+const stripLogsFromJob = (job: any): any => {
+  const jobWithoutLogs = { ...job };
+  if (jobWithoutLogs.result_summary) {
+    try {
+      const summary = JSON.parse(jobWithoutLogs.result_summary);
+      if (summary.logs) {
+        delete summary.logs;
+        jobWithoutLogs.result_summary = JSON.stringify(summary);
+      }
+    } catch {
+      // Keep original if JSON parsing fails
+    }
+  }
+  return jobWithoutLogs;
+};
+
 const serializeJsonText = (value: unknown): string | null => {
   if (value === undefined || value === null) {
     return null;
@@ -91,8 +107,8 @@ router.post('/', (req, res, next) => {
       feature_part: payload.feature_part ?? null,
       push_mode: payload.push_mode ?? 'always',
     });
-    orchestratorEvents.emit({ type: 'job_created', data: job });
-    res.status(201).json(job);
+    orchestratorEvents.emit({ type: 'job_created', data: stripLogsFromJob(job) });
+    res.status(201).json(stripLogsFromJob(job));
   } catch (error) {
     next(error);
   }
@@ -110,24 +126,7 @@ router.get('/', (req, res, next) => {
     if (validatedQuery.worker_type) filter.worker_type = validatedQuery.worker_type;
     if (validatedQuery.feature_id) filter.feature_id = validatedQuery.feature_id;
     const jobs = listJobs(filter);
-
-    // Exclude logs from result_summary for all jobs
-    const jobsWithoutLogs = jobs.map((job) => {
-      const jobWithoutLogs = { ...job };
-      if (jobWithoutLogs.result_summary) {
-        try {
-          const summary = JSON.parse(jobWithoutLogs.result_summary);
-          if (summary.logs) {
-            delete summary.logs;
-            jobWithoutLogs.result_summary = JSON.stringify(summary);
-          }
-        } catch {
-          // Keep original if JSON parsing fails
-        }
-      }
-      return jobWithoutLogs;
-    });
-
+    const jobsWithoutLogs = jobs.map(stripLogsFromJob);
     res.json(jobsWithoutLogs);
   } catch (error) {
     next(error);
@@ -140,22 +139,7 @@ router.get('/:id', (req, res, next) => {
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
     }
-
-    // Exclude logs from result_summary to reduce payload size
-    const jobWithoutLogs = { ...job };
-    if (jobWithoutLogs.result_summary) {
-      try {
-        const summary = JSON.parse(jobWithoutLogs.result_summary);
-        if (summary.logs) {
-          delete summary.logs;
-          jobWithoutLogs.result_summary = JSON.stringify(summary);
-        }
-      } catch {
-        // Keep original if JSON parsing fails
-      }
-    }
-
-    res.json(jobWithoutLogs);
+    res.json(stripLogsFromJob(job));
   } catch (error) {
     next(error);
   }
@@ -202,7 +186,7 @@ router.delete('/:id', async (req, res, next) => {
     } else {
       console.log(`Worktree ${job.worktree_path} still in use by other jobs, skipping removal`);
     }
-    res.status(200).json(job);
+    res.status(200).json(stripLogsFromJob(job));
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('Cannot delete job')) {
       return res.status(400).json({ error: error.message });
@@ -220,8 +204,8 @@ router.post('/claim', (req, res, next) => {
       return res.status(404).json({ error: 'No pending jobs available for this worker type' });
     }
 
-    orchestratorEvents.emit({ type: 'job_updated', data: job });
-    res.status(200).json(job);
+    orchestratorEvents.emit({ type: 'job_updated', data: stripLogsFromJob(job) });
+    res.status(200).json(stripLogsFromJob(job));
   } catch (error) {
     next(error);
   }
@@ -321,8 +305,8 @@ router.post('/:id/complete', (req, res, next) => {
       return res.status(404).json({ error: 'Job not found' });
     }
 
-    orchestratorEvents.emit({ type: 'job_updated', data: job });
-    res.status(200).json(job);
+    orchestratorEvents.emit({ type: 'job_updated', data: stripLogsFromJob(job) });
+    res.status(200).json(stripLogsFromJob(job));
   } catch (error) {
     next(error);
   }
