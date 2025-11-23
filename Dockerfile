@@ -28,9 +28,6 @@ RUN npm run build
 # Drop build-only packages to keep the final image lean
 RUN npm prune --production
 
-# Copy runtime artifacts (dist already built)
-COPY orchestrator.sqlite* ./
-
 # Create worktrees directory
 RUN mkdir -p /worktrees
 
