@@ -15,6 +15,7 @@ export interface AppConfig {
   orchestratorPort: number;
   orchestratorUrl: string;
   workerPollIntervalMs: number;
+  workerConcurrency: number;
   codexMcpTimeoutMs: number;
   /** Codex reasoning summary level: auto | concise | detailed */
   codexReasoningSummary?: string;
@@ -41,6 +42,7 @@ export const appConfig: AppConfig = {
   orchestratorPort,
   orchestratorUrl,
   workerPollIntervalMs: parseNumber(process.env.WORKER_POLL_INTERVAL_MS, 5000),
+  workerConcurrency: parseNumber(process.env.WORKER_CONCURRENCY, 3),
   codexMcpTimeoutMs: parseNumber(process.env.CODEX_MCP_TIMEOUT_MS, 1800000),
   codexReasoningSummary: process.env.CODEX_REASONING_SUMMARY || undefined,
   codexReasoningFormat: process.env.CODEX_REASONING_FORMAT || undefined,

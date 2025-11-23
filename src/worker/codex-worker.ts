@@ -61,6 +61,7 @@ type CodexWorkerDependencies = {
 export class CodexWorker {
   private readonly baseUrl: string;
   private readonly pollInterval: number;
+  private readonly concurrency: number;
   private readonly worktreeBaseDir: string;
   private readonly repoCacheDir: string;
   private readonly fetchImpl: typeof fetch;
@@ -71,6 +72,7 @@ export class CodexWorker {
   constructor(deps: CodexWorkerDependencies = {}) {
     this.baseUrl = appConfig.orchestratorUrl.replace(/\/+$/, '');
     this.pollInterval = appConfig.workerPollIntervalMs;
+    this.concurrency = appConfig.workerConcurrency;
     this.worktreeBaseDir = path.resolve(appConfig.worktreeBaseDir);
     this.repoCacheDir = path.join(this.worktreeBaseDir, '_repos');
     this.fetchImpl = deps.fetchImpl ?? fetch;
@@ -86,13 +88,18 @@ export class CodexWorker {
     await fs.mkdir(this.worktreeBaseDir, { recursive: true });
     await fs.mkdir(this.repoCacheDir, { recursive: true });
 
+    const workers = Array.from({ length: this.concurrency }, (_, i) => this.workerLoop(i));
+    await Promise.allSettled(workers);
+  }
+
+  private async workerLoop(workerId: number): Promise<void> {
     while (!this.shouldStop) {
       let claimedJob = false;
       try {
-        claimedJob = await this.pollOnce();
+        claimedJob = await this.pollOnce(workerId);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`Worker cycle error: ${message}`);
+        console.error(`[Worker ${workerId}] Worker cycle error: ${message}`);
         await wait(this.pollInterval);
         continue;
       }
@@ -103,8 +110,8 @@ export class CodexWorker {
     }
   }
 
-  private async pollOnce(): Promise<boolean> {
-    const job = await this.claimJob();
+  private async pollOnce(workerId: number): Promise<boolean> {
+    const job = await this.claimJob(workerId);
     if (!job) {
       return false;
     }
@@ -113,7 +120,7 @@ export class CodexWorker {
     return true;
   }
 
-  private async claimJob(): Promise<Job | null> {
+  private async claimJob(workerId: number): Promise<Job | null> {
     const url = new URL(`/jobs/claim?worker_type=${WORKER_TYPE}`, `${this.baseUrl}/`);
     const response = await this.fetchImpl(url, { method: 'POST' });
 
@@ -127,7 +134,7 @@ export class CodexWorker {
     }
 
     const job = (await response.json()) as Job;
-    console.log(`Claimed job ${job.id} (${job.branch_name})`);
+    console.log(`[Worker ${workerId}] Claimed job ${job.id} (${job.branch_name})`);
     return job;
   }
 
