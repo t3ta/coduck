@@ -47,7 +47,6 @@ export async function executeCodex(worktreePath: string, specJson: SpecJson): Pr
     prompt,
     worktreePath,
     sandbox: 'workspace-write',
-    approvalPolicy: 'never',
   });
 
   if (result.awaitingInput) {
@@ -90,7 +89,6 @@ export async function continueCodex(
     prompt: additionalPrompt,
     worktreePath,
     sandbox: 'workspace-write',
-    approvalPolicy: 'never',
   });
 
   if (result.awaitingInput) {
