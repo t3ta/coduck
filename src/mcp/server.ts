@@ -7,10 +7,17 @@ import { registerCheckoutTool } from './tools/checkout-tool.js';
 import { OrchestratorClient } from './orchestrator-client.js';
 
 export const createServer = (): McpServer => {
-  const server = new McpServer({
-    name: 'coduck-orchestrator',
-    version: '1.0.0',
-  });
+  const server = new McpServer(
+    {
+      name: 'coduck-orchestrator',
+      version: '1.0.0',
+    },
+    {
+      capabilities: {
+        tools: {},
+      },
+    },
+  );
 
   const orchestratorClient = new OrchestratorClient();
   registerJobTools(server, orchestratorClient);
