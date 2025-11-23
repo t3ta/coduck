@@ -99,6 +99,9 @@ const buildCodexConfig = (userConfig?: Record<string, unknown>): Record<string, 
     ...userConfig,
   };
 
+  // Force approval_policy to 'never' for automated execution
+  config.approval_policy = 'never';
+
   // Add reasoning settings from environment if not already specified
   if (appConfig.codexReasoningSummary && !config.model_reasoning_summary) {
     config.model_reasoning_summary = appConfig.codexReasoningSummary;
@@ -162,8 +165,9 @@ export const execCodex = (options: CodexExecOptions): Promise<CodexExecResult> =
 
     // Add config if present
     const config = buildCodexConfig(options.config);
-    if (Object.keys(config).length > 0) {
-      args.push('--config', JSON.stringify(config));
+    for (const [key, value] of Object.entries(config)) {
+      const valueStr = typeof value === 'string' ? value : JSON.stringify(value);
+      args.push('--config', `${key}=${valueStr}`);
     }
 
     // Add the prompt
@@ -295,8 +299,9 @@ export const resumeCodex = (options: CodexResumeOptions): Promise<CodexExecResul
 
     // Add config if present
     const config = buildCodexConfig(options.config);
-    if (Object.keys(config).length > 0) {
-      args.push('--config', JSON.stringify(config));
+    for (const [key, value] of Object.entries(config)) {
+      const valueStr = typeof value === 'string' ? value : JSON.stringify(value);
+      args.push('--config', `${key}=${valueStr}`);
     }
 
     // Add the continuation prompt
