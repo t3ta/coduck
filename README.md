@@ -86,19 +86,59 @@ npm run mcp
 
 ### Register MCP Server with Claude Code
 
-Add to `~/.claude/config.json`:
+#### 1. Build the project
+
+```bash
+npm run build
+```
+
+#### 2. Register MCP server
+
+Add to `~/.claude.json` (create if it doesn't exist):
 
 ```json
 {
-  "mcpServers": {
-    "coduck-orchestrator": {
-      "command": "node",
-      "args": ["/path/to/coduck/dist/mcp.js"],
-      "env": {}
+  "projects": {
+    "/absolute/path/to/coduck": {
+      "mcpServers": {
+        "coduck-orchestrator": {
+          "type": "stdio",
+          "command": "node",
+          "args": ["/absolute/path/to/coduck/dist/mcp.js"],
+          "env": {
+            "ORCHESTRATOR_URL": "http://localhost:3000"
+          }
+        }
+      }
     }
   }
 }
 ```
+
+**Important**:
+- Replace `/absolute/path/to/coduck` with your actual project path
+- The path must be absolute, not relative
+- Make sure Orchestrator and Worker are running before using MCP tools
+
+#### 3. Restart Claude Code
+
+After editing `~/.claude.json`, restart Claude Code to load the new configuration.
+
+#### 4. Verify connection
+
+In Claude Code, use the `/mcp` command to check the connection status. You should see:
+
+```
+Reconnected to coduck-orchestrator.
+```
+
+#### Available MCP Tools
+
+Once connected, you can use these tools in Claude Code:
+
+- **Job Management**: `enqueue_codex_job`, `list_jobs`, `get_job`, `delete_job`, `cleanup_jobs`, `continue_codex_job`
+- **Worktree Management**: `list_worktrees`, `cleanup_worktrees`, `delete_worktree`
+- **Checkout**: `checkout_job_worktree` - Open job worktree in new Claude Code window
 
 ## Cleanup
 
