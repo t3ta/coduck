@@ -301,7 +301,7 @@ router.post('/:id/complete', (req, res, next) => {
       try {
         const existing = JSON.parse(existingJob.result_summary);
         if (existing.logs && Array.isArray(existing.logs)) {
-          finalSummary = { ...body.result_summary, logs: existing.logs };
+          finalSummary = { ...(body.result_summary || {}), logs: existing.logs };
         }
       } catch {
         // Ignore JSON parse errors
