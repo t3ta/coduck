@@ -61,16 +61,19 @@ type CodexWorkerDependencies = {
 export class CodexWorker {
   private readonly baseUrl: string;
   private readonly pollInterval: number;
+  private readonly concurrency: number;
   private readonly worktreeBaseDir: string;
   private readonly repoCacheDir: string;
   private readonly fetchImpl: typeof fetch;
   private readonly createWorktreeImpl: typeof createWorktree;
   private readonly executeCodexImpl: typeof executeCodex;
+  private readonly cloneLocks = new Map<string, Promise<string>>();
   private shouldStop = false;
 
   constructor(deps: CodexWorkerDependencies = {}) {
     this.baseUrl = appConfig.orchestratorUrl.replace(/\/+$/, '');
     this.pollInterval = appConfig.workerPollIntervalMs;
+    this.concurrency = appConfig.workerConcurrency;
     this.worktreeBaseDir = path.resolve(appConfig.worktreeBaseDir);
     this.repoCacheDir = path.join(this.worktreeBaseDir, '_repos');
     this.fetchImpl = deps.fetchImpl ?? fetch;
@@ -86,13 +89,18 @@ export class CodexWorker {
     await fs.mkdir(this.worktreeBaseDir, { recursive: true });
     await fs.mkdir(this.repoCacheDir, { recursive: true });
 
+    const workers = Array.from({ length: this.concurrency }, (_, i) => this.workerLoop(i));
+    await Promise.allSettled(workers);
+  }
+
+  private async workerLoop(workerId: number): Promise<void> {
     while (!this.shouldStop) {
       let claimedJob = false;
       try {
-        claimedJob = await this.pollOnce();
+        claimedJob = await this.pollOnce(workerId);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`Worker cycle error: ${message}`);
+        console.error(`[Worker ${workerId}] Worker cycle error: ${message}`);
         await wait(this.pollInterval);
         continue;
       }
@@ -103,8 +111,8 @@ export class CodexWorker {
     }
   }
 
-  private async pollOnce(): Promise<boolean> {
-    const job = await this.claimJob();
+  private async pollOnce(workerId: number): Promise<boolean> {
+    const job = await this.claimJob(workerId);
     if (!job) {
       return false;
     }
@@ -113,7 +121,7 @@ export class CodexWorker {
     return true;
   }
 
-  private async claimJob(): Promise<Job | null> {
+  private async claimJob(workerId: number): Promise<Job | null> {
     const url = new URL(`/jobs/claim?worker_type=${WORKER_TYPE}`, `${this.baseUrl}/`);
     const response = await this.fetchImpl(url, { method: 'POST' });
 
@@ -127,7 +135,7 @@ export class CodexWorker {
     }
 
     const job = (await response.json()) as Job;
-    console.log(`Claimed job ${job.id} (${job.branch_name})`);
+    console.log(`[Worker ${workerId}] Claimed job ${job.id} (${job.branch_name})`);
     return job;
   }
 
@@ -271,13 +279,32 @@ export class CodexWorker {
     }
 
     const repoPath = path.join(this.repoCacheDir, this.sanitizeRepoName(repoLocation));
-    await fs.mkdir(this.repoCacheDir, { recursive: true });
 
-    const repoExists = await pathExists(path.join(repoPath, '.git'));
-    if (repoExists) {
-      return repoPath;
+    const existingLock = this.cloneLocks.get(repoPath);
+    if (existingLock) {
+      return existingLock;
     }
 
+    const clonePromise = (async () => {
+      const repoExists = await pathExists(path.join(repoPath, '.git'));
+      if (repoExists) {
+        return repoPath;
+      }
+
+      return this.performClone(repoLocation, repoPath);
+    })();
+
+    this.cloneLocks.set(repoPath, clonePromise);
+
+    try {
+      return await clonePromise;
+    } finally {
+      this.cloneLocks.delete(repoPath);
+    }
+  }
+
+  private async performClone(repoLocation: string, repoPath: string): Promise<string> {
+    await fs.mkdir(this.repoCacheDir, { recursive: true });
     console.log(`Cloning repository ${repoLocation} into ${repoPath}`);
     await this.runCommand('git', ['clone', repoLocation, repoPath], { cwd: this.repoCacheDir });
     return repoPath;

@@ -8,7 +8,7 @@ Codexをバックエンドとするジョブオーケストレーターシステ
 
 ## 開発コマンド
 
-### 起動
+### 起動（ローカル実行）
 
 ```bash
 # Orchestrator (HTTP API + SQLiteジョブキュー)
@@ -16,6 +16,9 @@ npm run orchestrator
 
 # Worker (ジョブ実行)
 npm run worker
+
+# Workerを並列実行（例: 5並列）
+WORKER_CONCURRENCY=5 npm run worker
 
 # MCP Server (Claude Code統合)
 npm run mcp
@@ -36,6 +39,7 @@ npx tsc
 - `tsx`を使用してTypeScriptを直接実行
 - `.env`ファイルで設定をオーバーライド可能（オプション）
 - ホットリロードなし - コード変更後はプロセスを再起動
+- Docker環境は提供せず、ローカル実行のみサポート
 
 ## アーキテクチャ
 
@@ -114,6 +118,7 @@ Claude Code → MCP Tool → Orchestrator API → SQLite
 - 同じ`branch_name`を持つJobは同じworktreeを共有
 - ワークツリーは手動削除が必要（自動クリーンアップなし）
 - 会話継続時は既存ワークツリーを再利用してコンテキストを保持
+- `repo_url` はローカルリポジトリの絶対パスを前提（例: `/home/user/workspace/my-app`）。同一マシン内でworktreeとローカルリポジトリが親和的に扱われ、ネットワーク経由のcloneやpushに依存しない
 
 ### ブランチ名の決定ロジック
 

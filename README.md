@@ -62,49 +62,29 @@ ORCHESTRATOR_URL=http://localhost:3000
 WORKER_POLL_INTERVAL_MS=5000
 WORKTREE_BASE_DIR=./worktrees
 CODEX_CLI_PATH=codex
+WORKER_CONCURRENCY=3
 ```
+
+- `WORKER_CONCURRENCY`: Number of worker processes running in parallel (default 3).
 
 ## Usage
 
-### Quick Start (Recommended)
-
-Start Orchestrator and Worker as background services:
+### Quick Start (Local)
 
 ```bash
-# Build the project
+# Terminal 1: build once (optional but recommended for MCP server)
 npm run build
 
-# Start Orchestrator (Docker)
-docker-compose up -d
-
-# Start Worker (PM2)
-npm install -g pm2
-pm2 start ecosystem.config.cjs
-pm2 save
-pm2 startup  # Follow instructions to enable startup on boot
-```
-
-Check status:
-```bash
-docker-compose ps          # Check Orchestrator
-pm2 status                 # Check Worker
-pm2 logs coduck-worker    # View Worker logs
-```
-
-Stop services:
-```bash
-docker-compose down        # Stop Orchestrator
-pm2 stop coduck-worker     # Stop Worker
-```
-
-### Manual Start (Development)
-
-```bash
-# Terminal 1: Orchestrator
+# Terminal 2: start Orchestrator
 npm run orchestrator
 
-# Terminal 2: Worker
+# Terminal 3: start Worker
 npm run worker
+
+# Increase parallel workers (example: 5)
+WORKER_CONCURRENCY=5 npm run worker
+
+# Optionally manage long-running processes with pm2 or a similar process manager
 ```
 
 ### Start MCP Server
