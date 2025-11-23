@@ -5,6 +5,7 @@
   "scripts": {
     "build": "tsc",
     "test": "tsx tests/run-tests.ts",
+    "hello": "tsx src/hello.ts",
     "orchestrator": "tsx src/orchestrator.ts",
     "worker": "tsx src/worker.ts",
     "mcp": "tsx src/mcp.ts",
