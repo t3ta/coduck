@@ -6,16 +6,13 @@ import { join } from 'node:path';
 import { appConfig } from './config.js';
 
 type SandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
-type ApprovalPolicy = 'untrusted' | 'on-failure' | 'on-request' | 'never';
 
 const DEFAULT_SANDBOX: SandboxMode = 'workspace-write';
-const DEFAULT_APPROVAL: ApprovalPolicy = 'never';
 
 export interface CodexExecOptions {
   prompt: string;
   worktreePath: string;
   sandbox?: SandboxMode;
-  approvalPolicy?: ApprovalPolicy;
   config?: Record<string, unknown>;
 }
 
@@ -24,7 +21,6 @@ export interface CodexResumeOptions {
   prompt: string;
   worktreePath: string;
   sandbox?: SandboxMode;
-  approvalPolicy?: ApprovalPolicy;
   config?: Record<string, unknown>;
 }
 
@@ -164,9 +160,6 @@ export const execCodex = (options: CodexExecOptions): Promise<CodexExecResult> =
     // Add sandbox mode
     args.push('--sandbox', options.sandbox ?? DEFAULT_SANDBOX);
 
-    // Add approval policy
-    args.push('--ask-for-approval', options.approvalPolicy ?? DEFAULT_APPROVAL);
-
     // Add config if present
     const config = buildCodexConfig(options.config);
     if (Object.keys(config).length > 0) {
@@ -299,9 +292,6 @@ export const resumeCodex = (options: CodexResumeOptions): Promise<CodexExecResul
 
     // Add sandbox mode
     args.push('--sandbox', options.sandbox ?? DEFAULT_SANDBOX);
-
-    // Add approval policy
-    args.push('--ask-for-approval', options.approvalPolicy ?? DEFAULT_APPROVAL);
 
     // Add config if present
     const config = buildCodexConfig(options.config);
