@@ -8,7 +8,10 @@
     "orchestrator": "tsx src/orchestrator.ts",
     "worker": "tsx src/worker.ts",
     "mcp": "tsx src/mcp.ts",
-    "cleanup": "tsx src/cli/cleanup.ts"
+    "cleanup": "tsx src/cli/cleanup.ts",
+    "ui:dev": "cd ui && npm run dev",
+    "ui:build": "cd ui && npm run build",
+    "ui:preview": "cd ui && npm run preview"
   },
   "keywords": [],
   "author": "",

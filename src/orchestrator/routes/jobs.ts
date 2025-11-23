@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { JobStatus, SpecJson } from '../../shared/types.js';
 import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJobStatus, isWorktreeInUse } from '../models/job.js';
 import { removeWorktree } from '../../worker/worktree.js';
+import { orchestratorEvents } from '../events.js';
 
 const jobStatusEnum = z.enum(['pending', 'running', 'awaiting_input', 'done', 'failed', 'cancelled']);
 
@@ -85,6 +86,7 @@ router.post('/', (req, res, next) => {
       feature_part: payload.feature_part ?? null,
       push_mode: payload.push_mode ?? 'always',
     });
+    orchestratorEvents.emit({ type: 'job_created', data: job });
     res.status(201).json(job);
   } catch (error) {
     next(error);
@@ -156,6 +158,7 @@ router.post('/claim', (req, res, next) => {
       return res.status(404).json({ error: 'No pending jobs available for this worker type' });
     }
 
+    orchestratorEvents.emit({ type: 'job_updated', data: job });
     res.status(200).json(job);
   } catch (error) {
     next(error);
@@ -205,6 +208,7 @@ router.post('/:id/complete', (req, res, next) => {
       return res.status(404).json({ error: 'Job not found' });
     }
 
+    orchestratorEvents.emit({ type: 'job_updated', data: job });
     res.status(200).json(job);
   } catch (error) {
     next(error);
