@@ -24,7 +24,10 @@ export const createApp = () => {
   app.use(sseRouter);
 
   // Serve static files from dist/public
-  const publicDir = path.join(__dirname, '../../dist/public');
+  // Use absolute path based on project root
+  const projectRoot = path.join(__dirname, '../..');
+  const publicDir = path.join(projectRoot, 'dist/public');
+  console.log('Serving static files from:', publicDir);
   app.use(express.static(publicDir));
 
   // Fallback to index.html for SPA routes (non-API requests)
@@ -38,14 +41,15 @@ export const createApp = () => {
     }
     // For non-API GET requests, serve index.html
     if (req.method === 'GET') {
-      res.sendFile(path.join(publicDir, 'index.html'));
+      res.sendFile(path.join(publicDir, 'index.html'), (err) => {
+        if (err) {
+          console.error('Error sending index.html:', err);
+          next();
+        }
+      });
     } else {
       next();
     }
-  });
-
-  app.use((req, res) => {
-    res.status(404).json({ error: 'Not found' });
   });
 
   app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
@@ -65,6 +69,7 @@ export const startServer = (): Promise<import('http').Server> => {
     initDb();
     const app = createApp();
     const server = app.listen(appConfig.orchestratorPort, () => {
+      console.log(`🚀 Orchestrator listening on http://localhost:${appConfig.orchestratorPort}`);
       resolve(server);
     });
   });
