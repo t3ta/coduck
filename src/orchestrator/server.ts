@@ -27,8 +27,8 @@ export const createApp = () => {
   const publicDir = path.join(__dirname, '../../dist/public');
   app.use(express.static(publicDir));
 
-  // Fallback to index.html for SPA routes
-  app.get('*', (req, res, next) => {
+  // Fallback to index.html for SPA routes (non-API requests)
+  app.use((req, res, next) => {
     // Skip API routes
     if (req.path.startsWith('/jobs') ||
         req.path.startsWith('/features') ||
@@ -36,7 +36,12 @@ export const createApp = () => {
         req.path.startsWith('/events')) {
       return next();
     }
-    res.sendFile(path.join(publicDir, 'index.html'));
+    // For non-API GET requests, serve index.html
+    if (req.method === 'GET') {
+      res.sendFile(path.join(publicDir, 'index.html'));
+    } else {
+      next();
+    }
   });
 
   app.use((req, res) => {
