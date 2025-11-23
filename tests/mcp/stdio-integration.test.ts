@@ -152,11 +152,11 @@ const writeJsonLine = async (stream: NodeJS.WritableStream | null, message: unkn
 };
 
 describe('MCP STDIO integration', () => {
-  test('node dist/mcp.js honors JSON-RPC initialize and tools/list over stdout', async () => {
+  test('tsx src/mcp.ts honors JSON-RPC initialize and tools/list over stdout', async () => {
     const testsDir = path.dirname(fileURLToPath(import.meta.url));
     const repoRoot = path.resolve(testsDir, '..', '..');
-    const entryPoint = path.join(repoRoot, 'dist', 'mcp.js');
-    const child = spawn('node', [entryPoint], {
+    const entryPoint = path.join(repoRoot, 'src', 'mcp.ts');
+    const child = spawn('npx', ['tsx', entryPoint], {
       cwd: repoRoot,
       stdio: ['pipe', 'pipe', 'pipe'],
     }) as ChildProcessWithoutNullStreams;
