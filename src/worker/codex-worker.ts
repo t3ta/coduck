@@ -67,6 +67,7 @@ export class CodexWorker {
   private readonly fetchImpl: typeof fetch;
   private readonly createWorktreeImpl: typeof createWorktree;
   private readonly executeCodexImpl: typeof executeCodex;
+  private readonly cloneLocks = new Map<string, Promise<string>>();
   private shouldStop = false;
 
   constructor(deps: CodexWorkerDependencies = {}) {
@@ -278,13 +279,29 @@ export class CodexWorker {
     }
 
     const repoPath = path.join(this.repoCacheDir, this.sanitizeRepoName(repoLocation));
-    await fs.mkdir(this.repoCacheDir, { recursive: true });
+
+    const existingLock = this.cloneLocks.get(repoPath);
+    if (existingLock) {
+      return existingLock;
+    }
 
     const repoExists = await pathExists(path.join(repoPath, '.git'));
     if (repoExists) {
       return repoPath;
     }
 
+    const clonePromise = this.performClone(repoLocation, repoPath);
+    this.cloneLocks.set(repoPath, clonePromise);
+
+    try {
+      return await clonePromise;
+    } finally {
+      this.cloneLocks.delete(repoPath);
+    }
+  }
+
+  private async performClone(repoLocation: string, repoPath: string): Promise<string> {
+    await fs.mkdir(this.repoCacheDir, { recursive: true });
     console.log(`Cloning repository ${repoLocation} into ${repoPath}`);
     await this.runCommand('git', ['clone', repoLocation, repoPath], { cwd: this.repoCacheDir });
     return repoPath;
