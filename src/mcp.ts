@@ -18,26 +18,18 @@ const requestShutdown = async (signal?: NodeJS.Signals, exitCode = 0): Promise<v
   }
   shuttingDown = true;
 
-  if (signal) {
-    console.log(`\nReceived ${signal}. Shutting down...`);
-  } else {
-    console.log('Shutting down...');
-  }
-
   // Stop worker polling and wait for current job to finish
   if (worker) {
     worker.stop();
     if (workerPromise) {
       await workerPromise;
     }
-    console.log('Worker stopped.');
   }
 
   // Close orchestrator HTTP server
   if (orchestratorServer) {
     await new Promise<void>((resolve) => {
       orchestratorServer!.close(() => {
-        console.log('Orchestrator stopped.');
         resolve();
       });
     });
@@ -69,7 +61,6 @@ const main = async (): Promise<void> => {
       console.error(`Worker error: ${message}`);
       void requestShutdown(undefined, 1);
     });
-    console.log('Worker started.');
 
     // Start MCP Server last (blocks until closed)
     await startMcpServer();

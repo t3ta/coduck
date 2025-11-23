@@ -36,7 +36,6 @@ export const startServer = (): Promise<import('http').Server> => {
     initDb();
     const app = createApp();
     const server = app.listen(appConfig.orchestratorPort, () => {
-      console.log(`Orchestrator listening on port ${appConfig.orchestratorPort}`);
       resolve(server);
     });
   });

@@ -86,10 +86,6 @@ export class CodexWorker {
     await fs.mkdir(this.worktreeBaseDir, { recursive: true });
     await fs.mkdir(this.repoCacheDir, { recursive: true });
 
-    console.log(
-      `Codex worker started. Connecting to ${this.baseUrl} every ${this.pollInterval}ms as ${WORKER_TYPE}`
-    );
-
     while (!this.shouldStop) {
       let claimedJob = false;
       try {
@@ -105,8 +101,6 @@ export class CodexWorker {
         await wait(this.pollInterval);
       }
     }
-
-    console.log('Codex worker stopped.');
   }
 
   private async pollOnce(): Promise<boolean> {
