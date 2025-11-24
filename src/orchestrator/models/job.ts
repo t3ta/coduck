@@ -262,6 +262,12 @@ export const deleteJob = (id: string): Job | null => {
       throw new Error(`Cannot delete job ${jobId} while status is ${row.status}`);
     }
 
+    // Prevent deleting jobs that other jobs depend on
+    const dependentJobs = getDependentJobs(jobId);
+    if (dependentJobs.length > 0) {
+      throw new Error(`Cannot delete job ${jobId} because ${dependentJobs.length} job(s) depend on it: ${dependentJobs.join(', ')}`);
+    }
+
     const deleteStmt = db.prepare('DELETE FROM jobs WHERE id = ?');
     deleteStmt.run(jobId);
 
@@ -302,12 +308,18 @@ export const deleteJobs = (filter: { statuses?: JobStatus[]; maxAgeDays?: number
       return { deleted: [], count: 0 };
     }
 
+    // Filter out jobs that other jobs depend on
+    const deletableRows = rows.filter((row) => {
+      const dependentJobs = getDependentJobs(row.id);
+      return dependentJobs.length === 0;
+    });
+
     const deleteStmt = db.prepare('DELETE FROM jobs WHERE id = ?');
-    for (const row of rows) {
+    for (const row of deletableRows) {
       deleteStmt.run(row.id);
     }
 
-    const deleted = rows.map(deserializeJob);
+    const deleted = deletableRows.map(deserializeJob);
     return { deleted, count: deleted.length };
   });
 
