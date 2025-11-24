@@ -95,12 +95,15 @@ router.post('/', (req, res, next) => {
   try {
     const payload = createJobSchema.parse(req.body);
 
-    // Validate dependencies exist
+    // Validate dependencies exist and are not failed/cancelled
     if (payload.depends_on && payload.depends_on.length > 0) {
       for (const depId of payload.depends_on) {
         const depJob = getJob(depId);
         if (!depJob) {
           return res.status(400).json({ error: `Dependency job ${depId} not found` });
+        }
+        if (depJob.status === 'failed' || depJob.status === 'cancelled') {
+          return res.status(400).json({ error: `Dependency job ${depId} is ${depJob.status} and cannot be depended on` });
         }
       }
     }
