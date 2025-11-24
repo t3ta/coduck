@@ -132,6 +132,8 @@ router.post('/', (req, res, next) => {
           throw new Error('Circular dependency detected');
         }
         setJobDependencies(newJob.id, payload.depends_on);
+        // Include depends_on in the returned job
+        newJob.depends_on = payload.depends_on;
       }
 
       return newJob;
