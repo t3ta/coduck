@@ -203,6 +203,22 @@ export const updateJobStatus = (
     }
     throw new Error(`Job ${id} not found`);
   }
+
+  // If this job failed or was cancelled, recursively cancel all pending jobs that depend on it (cascading cancellation)
+  if (status === 'failed' || status === 'cancelled') {
+    const dependentJobs = getDependentJobs(id);
+    for (const depJobId of dependentJobs) {
+      const depJob = getJob(depJobId);
+      if (depJob && depJob.status === 'pending') {
+        const cancelSummary = {
+          error: `Cancelled because dependency job ${id} ${status === 'failed' ? 'failed' : 'was cancelled'}`,
+          cancelled_at: now
+        };
+        // Recursively cancel dependent jobs
+        updateJobStatus(depJobId, 'cancelled', cancelSummary, ['pending']);
+      }
+    }
+  }
 };
 
 export const claimJob = (worker_type: string): Job | null => {
