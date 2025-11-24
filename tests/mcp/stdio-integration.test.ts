@@ -208,7 +208,7 @@ describe('MCP STDIO integration', () => {
       if (!parsed.success) {
         throw parsed.error;
       }
-      expect(parsed.data.tools.length).toBe(10);
+      expect(parsed.data.tools.length).toBe(11);
     } finally {
       jsonWatcher.dispose();
       stderrCollector.dispose();

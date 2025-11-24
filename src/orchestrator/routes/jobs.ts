@@ -2,9 +2,10 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import type { JobStatus, SpecJson } from '../../shared/types.js';
-import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJobStatus, isWorktreeInUse } from '../models/job.js';
+import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJobStatus, isWorktreeInUse, setJobDependencies, getJobDependencies, getDependentJobs, checkCircularDependency } from '../models/job.js';
 import { removeWorktree } from '../../worker/worktree.js';
 import { orchestratorEvents } from '../events.js';
+import { getDb } from '../db.js';
 
 const jobStatusEnum = z.enum(['pending', 'running', 'awaiting_input', 'done', 'failed', 'cancelled']);
 
@@ -29,6 +30,7 @@ const createJobSchema = z.object({
   feature_id: z.string().min(1).optional(),
   feature_part: z.string().min(1).optional(),
   push_mode: z.enum(['always', 'never']).optional(),
+  depends_on: z.array(z.string().uuid()).optional(),
 });;
 
 const listJobsQuerySchema = z.object({
@@ -92,24 +94,60 @@ const router = Router();
 router.post('/', (req, res, next) => {
   try {
     const payload = createJobSchema.parse(req.body);
+
+    // Validate dependencies exist and are not failed/cancelled
+    if (payload.depends_on && payload.depends_on.length > 0) {
+      for (const depId of payload.depends_on) {
+        const depJob = getJob(depId);
+        if (!depJob) {
+          return res.status(400).json({ error: `Dependency job ${depId} not found` });
+        }
+        if (depJob.status === 'failed' || depJob.status === 'cancelled') {
+          return res.status(400).json({ error: `Dependency job ${depId} is ${depJob.status} and cannot be depended on` });
+        }
+      }
+    }
+
     const resultSummary = serializeJsonText(payload.result_summary);
-    const job = createJob({
-      repo_url: payload.repo_url,
-      base_ref: payload.base_ref,
-      branch_name: payload.branch_name,
-      worktree_path: payload.worktree_path,
-      worker_type: payload.worker_type,
-      status: 'pending' as JobStatus,
-      spec_json: payload.spec_json,
-      result_summary: resultSummary,
-      conversation_id: payload.conversation_id ?? null,
-      feature_id: payload.feature_id ?? null,
-      feature_part: payload.feature_part ?? null,
-      push_mode: payload.push_mode ?? 'always',
-    });
+
+    // Use transaction to create job and set dependencies atomically
+    const db = getDb();
+    const job = db.transaction(() => {
+      const newJob = createJob({
+        repo_url: payload.repo_url,
+        base_ref: payload.base_ref,
+        branch_name: payload.branch_name,
+        worktree_path: payload.worktree_path,
+        worker_type: payload.worker_type,
+        status: 'pending' as JobStatus,
+        spec_json: payload.spec_json,
+        result_summary: resultSummary,
+        conversation_id: payload.conversation_id ?? null,
+        feature_id: payload.feature_id ?? null,
+        feature_part: payload.feature_part ?? null,
+        push_mode: payload.push_mode ?? 'always',
+      });
+
+      // Check for circular dependencies before setting
+      if (payload.depends_on && payload.depends_on.length > 0) {
+        const hasCycle = checkCircularDependency(newJob.id, payload.depends_on);
+        if (hasCycle) {
+          throw new Error('Circular dependency detected');
+        }
+        setJobDependencies(newJob.id, payload.depends_on);
+        // Include depends_on in the returned job
+        newJob.depends_on = payload.depends_on;
+      }
+
+      return newJob;
+    })();
+
     orchestratorEvents.emit({ type: 'job_created', data: stripLogsFromJob(job) });
     res.status(201).json(stripLogsFromJob(job));
   } catch (error) {
+    if (error instanceof Error && error.message === 'Circular dependency detected') {
+      return res.status(400).json({ error: error.message });
+    }
     next(error);
   }
 });
@@ -140,6 +178,26 @@ router.get('/:id', (req, res, next) => {
       return res.status(404).json({ error: 'Job not found' });
     }
     res.json(stripLogsFromJob(job));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id/dependencies', (req, res, next) => {
+  try {
+    const jobId = req.params.id;
+    const job = getJob(jobId);
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    const dependsOn = getJobDependencies(jobId);
+    const dependedBy = getDependentJobs(jobId);
+
+    res.json({
+      depends_on: dependsOn,
+      depended_by: dependedBy,
+    });
   } catch (error) {
     next(error);
   }

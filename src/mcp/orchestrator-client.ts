@@ -78,6 +78,7 @@ export interface EnqueueCodexJobArgs {
   feature_id?: string;
   feature_part?: string;
   push_mode?: 'always' | 'never';
+  depends_on?: string[];
 }
 
 export interface ListJobsFilter {
@@ -157,6 +158,7 @@ export class OrchestratorClient {
       feature_id: args.feature_id,
       feature_part: args.feature_part,
       push_mode: args.push_mode ?? 'always',
+      depends_on: args.depends_on,
     };
 
     return this.request<Job>('/jobs', {
@@ -179,6 +181,13 @@ export class OrchestratorClient {
       throw new Error('Job ID is required');
     }
     return this.request<Job>(`/jobs/${encodeURIComponent(id)}`);
+  }
+
+  async getJobDependencies(id: string): Promise<{ depends_on: string[]; depended_by: string[] }> {
+    if (!id.trim()) {
+      throw new Error('Job ID is required');
+    }
+    return this.request<{ depends_on: string[]; depended_by: string[] }>(`/jobs/${encodeURIComponent(id)}/dependencies`);
   }
 
   async deleteJob(id: string): Promise<Job> {
