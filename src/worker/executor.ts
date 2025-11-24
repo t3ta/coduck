@@ -40,13 +40,14 @@ const buildPrompt = (spec: SpecJson): string => {
 /**
  * Execute Codex for the first time (new session).
  */
-export async function executeCodex(worktreePath: string, specJson: SpecJson): Promise<ExecutionResult> {
+export async function executeCodex(worktreePath: string, specJson: SpecJson, jobId?: string): Promise<ExecutionResult> {
   const prompt = buildPrompt(specJson);
 
   const result = await execCodex({
     prompt,
     worktreePath,
     sandbox: 'workspace-write',
+    jobId,
   });
 
   if (result.awaitingInput) {
@@ -82,13 +83,15 @@ export async function executeCodex(worktreePath: string, specJson: SpecJson): Pr
 export async function continueCodex(
   worktreePath: string,
   sessionId: string,
-  additionalPrompt: string
+  additionalPrompt: string,
+  jobId?: string
 ): Promise<ExecutionResult> {
   const result = await resumeCodex({
     sessionId,
     prompt: additionalPrompt,
     worktreePath,
     sandbox: 'workspace-write',
+    jobId,
   });
 
   if (result.awaitingInput) {

@@ -186,7 +186,7 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
 
   server.registerTool('get_job', {
     title: 'Get Job',
-    description: 'Fetch a single job by ID.',
+    description: 'Fetch a single job by ID. Note: Logs are excluded from the response to reduce payload size. Use the web UI to view logs if needed.',
     inputSchema: getJobSchema,
   }, async (args) => {
     const job = await orchestratorClient.getJob(args.id.trim());

@@ -15,6 +15,7 @@ import type {
 } from '../../shared/types.js';
 import { listJobs } from '../models/job.js';
 import { removeWorktree } from '../../worker/worktree.js';
+import { orchestratorEvents } from '../events.js';
 
 const execFileAsync = promisify(execFile);
 const WORKTREE_BASE_DIR = path.resolve(appConfig.worktreeBaseDir);
@@ -216,6 +217,11 @@ router.delete('/cleanup', async (_req, res, next) => {
       }
     }
 
+    // Emit SSE event if any worktrees were removed
+    if (removed.length > 0) {
+      orchestratorEvents.emit({ type: 'worktree_changed' });
+    }
+
     const payload: WorktreeCleanupResponse = { removed, failures, skipped };
     res.json(payload);
   } catch (error) {
@@ -246,6 +252,9 @@ router.delete('/:encodedPath', async (req, res, next) => {
         error: error instanceof Error ? error.message : String(error),
       });
     }
+
+    // Emit SSE event on successful deletion
+    orchestratorEvents.emit({ type: 'worktree_changed' });
 
     const payload: WorktreeDeletionResponse = { removed: true, worktree: target };
     res.json(payload);

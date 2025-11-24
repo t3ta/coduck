@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { JobStatus, SpecJson } from '../../shared/types.js';
 import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJobStatus, isWorktreeInUse } from '../models/job.js';
 import { removeWorktree } from '../../worker/worktree.js';
+import { orchestratorEvents } from '../events.js';
 
 const jobStatusEnum = z.enum(['pending', 'running', 'awaiting_input', 'done', 'failed', 'cancelled']);
 
@@ -46,6 +47,11 @@ const completeJobSchema = z.object({
   conversation_id: z.string().nullable().optional(),
 });
 
+const appendLogSchema = z.object({
+  stream: z.enum(['stdout', 'stderr']),
+  text: z.string(),
+});
+
 const cleanupJobsSchema = z.object({
   statuses: z.array(jobStatusEnum).optional(),
   maxAgeDays: z.number().int().nonnegative().optional(),
@@ -56,6 +62,22 @@ const toFilterValue = (value: unknown): string | undefined => {
     return value[0];
   }
   return typeof value === 'string' ? value : undefined;
+};
+
+const stripLogsFromJob = (job: any): any => {
+  const jobWithoutLogs = { ...job };
+  if (jobWithoutLogs.result_summary) {
+    try {
+      const summary = JSON.parse(jobWithoutLogs.result_summary);
+      if (summary.logs) {
+        delete summary.logs;
+        jobWithoutLogs.result_summary = JSON.stringify(summary);
+      }
+    } catch {
+      // Keep original if JSON parsing fails
+    }
+  }
+  return jobWithoutLogs;
 };
 
 const serializeJsonText = (value: unknown): string | null => {
@@ -85,7 +107,8 @@ router.post('/', (req, res, next) => {
       feature_part: payload.feature_part ?? null,
       push_mode: payload.push_mode ?? 'always',
     });
-    res.status(201).json(job);
+    orchestratorEvents.emit({ type: 'job_created', data: stripLogsFromJob(job) });
+    res.status(201).json(stripLogsFromJob(job));
   } catch (error) {
     next(error);
   }
@@ -103,7 +126,8 @@ router.get('/', (req, res, next) => {
     if (validatedQuery.worker_type) filter.worker_type = validatedQuery.worker_type;
     if (validatedQuery.feature_id) filter.feature_id = validatedQuery.feature_id;
     const jobs = listJobs(filter);
-    res.json(jobs);
+    const jobsWithoutLogs = jobs.map(stripLogsFromJob);
+    res.json(jobsWithoutLogs);
   } catch (error) {
     next(error);
   }
@@ -115,7 +139,32 @@ router.get('/:id', (req, res, next) => {
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
     }
-    res.json(job);
+    res.json(stripLogsFromJob(job));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.get('/:id/logs', (req, res, next) => {
+  try {
+    const job = getJob(req.params.id);
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Extract logs from result_summary
+    if (!job.result_summary) {
+      return res.json([]);
+    }
+
+    try {
+      const summary = JSON.parse(job.result_summary);
+      const logs = summary.logs || [];
+      res.json(logs);
+    } catch {
+      // If result_summary is not valid JSON (e.g., old jobs), return empty array
+      return res.json([]);
+    }
   } catch (error) {
     next(error);
   }
@@ -138,7 +187,7 @@ router.delete('/:id', async (req, res, next) => {
     } else {
       console.log(`Worktree ${job.worktree_path} still in use by other jobs, skipping removal`);
     }
-    res.status(200).json(job);
+    res.status(200).json(stripLogsFromJob(job));
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('Cannot delete job')) {
       return res.status(400).json({ error: error.message });
@@ -156,7 +205,8 @@ router.post('/claim', (req, res, next) => {
       return res.status(404).json({ error: 'No pending jobs available for this worker type' });
     }
 
-    res.status(200).json(job);
+    orchestratorEvents.emit({ type: 'job_updated', data: stripLogsFromJob(job) });
+    res.status(200).json(stripLogsFromJob(job));
   } catch (error) {
     next(error);
   }
@@ -187,15 +237,74 @@ router.post('/cleanup', async (req, res, next) => {
   }
 });
 
+router.post('/:id/logs', (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const body = appendLogSchema.parse(req.body);
+
+    const job = getJob(id);
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Append log to result_summary
+    let currentSummary: Record<string, unknown> = {};
+    if (job.result_summary) {
+      try {
+        currentSummary = JSON.parse(job.result_summary);
+      } catch {
+        // If result_summary is not valid JSON (e.g., old jobs), start fresh
+        currentSummary = {};
+      }
+    }
+    if (!currentSummary.logs) {
+      currentSummary.logs = [];
+    }
+    (currentSummary.logs as Array<Record<string, unknown>>).push({
+      stream: body.stream,
+      text: body.text,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Update job with new logs
+    updateJobStatus(id, job.status as JobStatus, currentSummary, [job.status as JobStatus]);
+
+    // Emit SSE event
+    orchestratorEvents.emit({
+      type: 'log_appended',
+      data: { jobId: id, stream: body.stream, text: body.text },
+    });
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post('/:id/complete', (req, res, next) => {
   try {
     const { id } = req.params;
     const body = completeJobSchema.parse(req.body);
     const hasConversationId = Object.hasOwn(body, 'conversation_id');
+
+    // Preserve logs from the existing result_summary
+    const existingJob = getJob(id);
+    let finalSummary = body.result_summary;
+    if (existingJob?.result_summary) {
+      try {
+        const existing = JSON.parse(existingJob.result_summary);
+        if (existing.logs && Array.isArray(existing.logs)) {
+          finalSummary = { ...(body.result_summary || {}), logs: existing.logs };
+        }
+      } catch {
+        // Ignore JSON parse errors
+      }
+    }
+
     updateJobStatus(
       id,
       body.status,
-      body.result_summary,
+      finalSummary,
       ['running', 'awaiting_input'],
       hasConversationId ? body.conversation_id ?? null : undefined
     );
@@ -205,7 +314,8 @@ router.post('/:id/complete', (req, res, next) => {
       return res.status(404).json({ error: 'Job not found' });
     }
 
-    res.status(200).json(job);
+    orchestratorEvents.emit({ type: 'job_updated', data: stripLogsFromJob(job) });
+    res.status(200).json(stripLogsFromJob(job));
   } catch (error) {
     next(error);
   }

@@ -86,6 +86,11 @@ export class CodexWorker {
   }
 
   public async start(): Promise<void> {
+    console.log(`Starting Codex Worker with concurrency: ${this.concurrency}`);
+    console.log(`Orchestrator URL: ${this.baseUrl}`);
+    console.log(`Worktree base dir: ${this.worktreeBaseDir}`);
+    console.log(`Poll interval: ${this.pollInterval}ms`);
+
     await fs.mkdir(this.worktreeBaseDir, { recursive: true });
     await fs.mkdir(this.repoCacheDir, { recursive: true });
 
@@ -184,7 +189,7 @@ export class CodexWorker {
 
       worktreeContext = await this.createWorktreeImpl(repoPath, job.base_ref, job.branch_name, worktreePath);
 
-      const execution = await this.executeCodexImpl(worktreeContext.path, job.spec_json);
+      const execution = await this.executeCodexImpl(worktreeContext.path, job.spec_json, job.id);
       if (execution.sessionId) {
         sessionId = execution.sessionId;
       }
