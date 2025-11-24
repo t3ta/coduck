@@ -37,30 +37,44 @@
   });
 
   onMount(async () => {
+    // Buffer for SSE events received during initial fetch
+    const bufferedLogs: LogEntry[] = [];
+    let fetchComplete = false;
+
+    // Listen for new logs via SSE (start listening before fetch to avoid missing events)
+    const unsubscribe = sseClient.on((event) => {
+      if (event.type === 'log_appended' && event.data.jobId === jobId) {
+        const newLog: LogEntry = {
+          stream: event.data.stream,
+          text: event.data.text,
+          timestamp: new Date().toISOString(),
+        };
+
+        if (fetchComplete) {
+          // Fetch already done, append directly
+          logLines = [...logLines, newLog];
+        } else {
+          // Still fetching, buffer the log
+          bufferedLogs.push(newLog);
+        }
+      }
+    });
+
     // Fetch logs on mount
     try {
       loading = true;
-      logLines = await getJobLogs(jobId);
+      const fetchedLogs = await getJobLogs(jobId);
+      // Merge fetched logs with buffered SSE logs
+      logLines = [...fetchedLogs, ...bufferedLogs];
       error = null;
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load logs';
+      // Apply buffered logs even if fetch fails
+      logLines = bufferedLogs;
     } finally {
       loading = false;
+      fetchComplete = true;
     }
-
-    // Listen for new logs via SSE
-    const unsubscribe = sseClient.on((event) => {
-      if (event.type === 'log_appended' && event.data.jobId === jobId) {
-        logLines = [
-          ...logLines,
-          {
-            stream: event.data.stream,
-            text: event.data.text,
-            timestamp: new Date().toISOString(),
-          },
-        ];
-      }
-    });
 
     return () => {
       unsubscribe();

@@ -36,7 +36,7 @@
     localStorage.setItem('notification-prompt-dismissed', 'true');
   }
 
-  onMount(() => {
+  onMount(async () => {
     // Show notification prompt if not dismissed before
     const dismissed = localStorage.getItem('notification-prompt-dismissed');
     if (!dismissed && Notification.permission === 'default') {
@@ -47,10 +47,27 @@
       notificationManager.requestPermission();
     }
 
+    // Seed previousJobStatuses from existing jobs to catch in-flight job completions
+    try {
+      const response = await fetch('/jobs');
+      if (response.ok) {
+        const jobs = await response.json();
+        for (const job of jobs) {
+          previousJobStatuses.set(job.id, job.status);
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to seed job statuses:', err);
+    }
+
     // Listen to SSE events for notifications
     sseClient.connect();
     const unsubscribe = sseClient.on((event) => {
-      if (event.type === 'job_updated') {
+      if (event.type === 'job_created') {
+        // Track newly created jobs
+        const job = event.data;
+        previousJobStatuses.set(job.id, job.status);
+      } else if (event.type === 'job_updated') {
         const job = event.data;
         const previousStatus = previousJobStatuses.get(job.id);
 
