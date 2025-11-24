@@ -24,6 +24,12 @@ export interface Job {
   conversation_id: string | null;
   created_at: string;
   updated_at: string;
+  depends_on?: string[]; // Job IDs this job depends on
+}
+
+export interface JobDependency {
+  job_id: string;
+  depends_on_job_id: string;
 }
 
 export type WorktreeState = 'orphaned' | 'in_use' | 'protected' | 'locked' | 'unmanaged';

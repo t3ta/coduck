@@ -60,10 +60,14 @@ npx tsc
 
 3. **MCP Server** (`src/mcp/`)
    - Claude Codeに公開するツール:
-     - `enqueue_codex_job`: 新規ジョブ作成
+     - `enqueue_codex_job`: 新規ジョブ作成（依存関係指定対応）
      - `list_jobs`: ジョブ一覧取得
      - `get_job`: ジョブ詳細取得
+     - `get_job_dependencies`: ジョブ依存関係取得
+     - `delete_job`: ジョブ削除
+     - `cleanup_jobs`: 複数ジョブの一括削除
      - `continue_codex_job`: 会話継続
+     - `list_worktrees`, `cleanup_worktrees`, `delete_worktree`, `checkout_job_worktree`: Worktree管理
 
 ### データフロー
 
@@ -177,6 +181,156 @@ enqueue_codex_job({
 
 // → 同じfeature/navy-commentブランチに2つのJobがcommit
 // → ローカルで確認後、手動でpush & PR作成
+```
+
+## ジョブ依存関係管理（DAG）
+
+### 概要
+
+ジョブ間の依存関係を定義し、前提ジョブの完了を待って自動実行するDAG（Directed Acyclic Graph）機能をサポートしています。
+
+### 基本的な使い方
+
+```typescript
+// ステップ1: 基盤となるジョブを作成
+const baseJob = await enqueue_codex_job({
+  goal: "データベーススキーマを作成",
+  context_files: ["src/db/schema.ts"],
+});
+
+// ステップ2: 依存ジョブを作成（baseJobが完了するまで待機）
+const apiJob = await enqueue_codex_job({
+  goal: "RESTful APIエンドポイントを実装",
+  context_files: ["src/api/routes.ts"],
+  depends_on: [baseJob.id], // 依存関係を指定
+});
+
+// ステップ3: 複数の依存関係も指定可能
+const testJob = await enqueue_codex_job({
+  goal: "統合テストを追加",
+  context_files: ["tests/integration/"],
+  depends_on: [baseJob.id, apiJob.id], // 両方が完了するまで待機
+});
+```
+
+### 依存関係の動作
+
+**ジョブの実行条件**:
+- 依存するすべてのジョブが`done`ステータスになった時点で実行可能になる
+- 依存ジョブが`failed`ステータスの場合は実行されない（blocked状態を維持）
+- 依存関係がないジョブは即座に実行可能
+
+**Worker の claimJob() 動作**:
+```typescript
+// Workerは以下の条件を満たすジョブのみをクレーム:
+// 1. status = 'pending'
+// 2. worktree競合がない（同じbranch_name, repo_urlのrunningジョブがない）
+// 3. 全ての依存ジョブが'done'ステータス
+// 4. 依存ジョブに'failed'がない
+```
+
+**循環依存の検出**:
+- ジョブ作成時に深さ優先探索（DFS）で循環依存をチェック
+- 循環が検出された場合は400エラーで作成を拒否
+
+### API仕様
+
+**POST /jobs**:
+```typescript
+{
+  // 既存フィールド...
+  "depends_on": ["job-uuid-1", "job-uuid-2"], // オプション: 依存ジョブのUUID配列
+}
+```
+
+**GET /jobs/:id/dependencies**:
+```typescript
+{
+  "depends_on": ["upstream-job-id"],    // このジョブが依存するジョブ
+  "depended_by": ["downstream-job-id"]  // このジョブに依存しているジョブ
+}
+```
+
+### MCP Tool の使用例
+
+```typescript
+// 依存関係付きでジョブを作成
+enqueue_codex_job({
+  goal: "機能Bを実装",
+  context_files: ["src/feature-b.ts"],
+  depends_on: ["<job-a-uuid>"],
+  feature_id: "multi-step-feature",
+  feature_part: "step-2"
+});
+
+// 依存関係を確認
+get_job_dependencies({ id: "<job-id>" });
+// 出力例:
+// Upstream dependencies (must complete before this job): 1
+//   - <job-a-uuid>
+// Downstream dependencies (blocked until this job completes): 2
+//   - <job-c-uuid>
+//   - <job-d-uuid>
+```
+
+### データベーススキーマ
+
+**job_dependenciesテーブル**:
+```sql
+CREATE TABLE job_dependencies (
+  job_id TEXT NOT NULL,              -- 依存する側のジョブ
+  depends_on_job_id TEXT NOT NULL,   -- 依存される側のジョブ
+  PRIMARY KEY (job_id, depends_on_job_id),
+  FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+  FOREIGN KEY (depends_on_job_id) REFERENCES jobs(id) ON DELETE CASCADE
+);
+```
+
+### 使用例：マルチステップワークフロー
+
+```typescript
+// 例: Webアプリケーションの段階的実装
+
+// Phase 1: データモデル
+const modelJob = await enqueue_codex_job({
+  goal: "Userモデルとスキーマを定義",
+  context_files: ["src/models/user.ts", "src/db/schema.ts"],
+  feature_id: "user-auth",
+  feature_part: "models",
+});
+
+// Phase 2: バックエンドAPI（モデルに依存）
+const apiJob = await enqueue_codex_job({
+  goal: "User認証APIを実装",
+  context_files: ["src/api/auth.ts"],
+  depends_on: [modelJob.id],
+  feature_id: "user-auth",
+  feature_part: "api",
+});
+
+// Phase 3: フロントエンド（APIに依存）
+const uiJob = await enqueue_codex_job({
+  goal: "ログインUIコンポーネントを作成",
+  context_files: ["src/components/LoginForm.tsx"],
+  depends_on: [apiJob.id],
+  feature_id: "user-auth",
+  feature_part: "ui",
+});
+
+// Phase 4: テスト（全てに依存）
+const testJob = await enqueue_codex_job({
+  goal: "E2E認証テストを追加",
+  context_files: ["tests/e2e/auth.test.ts"],
+  depends_on: [modelJob.id, apiJob.id, uiJob.id],
+  feature_id: "user-auth",
+  feature_part: "tests",
+});
+
+// 実行順序:
+// 1. modelJob が実行される（依存なし）
+// 2. modelJob 完了後、apiJob が実行される
+// 3. apiJob 完了後、uiJob が実行される
+// 4. 全て完了後、testJob が実行される
 ```
 
 ## MCP Server登録

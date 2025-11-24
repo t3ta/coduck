@@ -48,23 +48,31 @@ const serializeResultSummary = (value: unknown): string | null => {
   return typeof value === 'string' ? value : JSON.stringify(value);
 };
 
-const deserializeJob = (row: JobRow): Job => ({
-  id: row.id,
-  repo_url: row.repo_url,
-  base_ref: row.base_ref,
-  branch_name: row.branch_name,
-  worktree_path: row.worktree_path,
-  worker_type: row.worker_type,
-  feature_id: row.feature_id,
-  feature_part: row.feature_part,
-  push_mode: (row.push_mode as 'always' | 'never') ?? 'always',
-  status: row.status,
-  spec_json: JSON.parse(row.spec_json),
-  result_summary: row.result_summary,
-  conversation_id: row.conversation_id,
-  created_at: row.created_at,
-  updated_at: row.updated_at,
-});;
+const deserializeJob = (row: JobRow): Job => {
+  const db = getDb();
+  const depsStmt = db.prepare('SELECT depends_on_job_id FROM job_dependencies WHERE job_id = ?');
+  const depsRows = depsStmt.all(row.id) as Array<{ depends_on_job_id: string }>;
+  const depends_on = depsRows.length > 0 ? depsRows.map((r) => r.depends_on_job_id) : undefined;
+
+  return {
+    id: row.id,
+    repo_url: row.repo_url,
+    base_ref: row.base_ref,
+    branch_name: row.branch_name,
+    worktree_path: row.worktree_path,
+    worker_type: row.worker_type,
+    feature_id: row.feature_id,
+    feature_part: row.feature_part,
+    push_mode: (row.push_mode as 'always' | 'never') ?? 'always',
+    status: row.status,
+    spec_json: JSON.parse(row.spec_json),
+    result_summary: row.result_summary,
+    conversation_id: row.conversation_id,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    depends_on,
+  };
+};
 
 const PROTECTED_STATUSES: ReadonlySet<JobStatus> = new Set(['running', 'awaiting_input']);
 const DEFAULT_BULK_DELETE_STATUSES: JobStatus[] = ['done', 'failed', 'cancelled'];
@@ -201,7 +209,10 @@ export const claimJob = (worker_type: string): Job | null => {
   const db = getDb();
 
   const transaction = db.transaction((type: string): Job | null => {
-    // Exclude jobs with same (branch_name, repo_url) as currently running or awaiting_input jobs to prevent concurrent worktree access
+    // Exclude jobs with:
+    // 1. Same (branch_name, repo_url) as currently running or awaiting_input jobs (worktree conflict prevention)
+    // 2. Unresolved dependencies (all dependencies must be 'done')
+    // 3. Failed dependencies (any dependency is 'failed')
     const selectStmt = db.prepare(
       `SELECT ${JOB_COLUMNS} FROM jobs
        WHERE status = 'pending'
@@ -211,6 +222,18 @@ export const claimJob = (worker_type: string): Job | null => {
            WHERE running_jobs.status IN ('running', 'awaiting_input')
              AND running_jobs.branch_name = jobs.branch_name
              AND running_jobs.repo_url = jobs.repo_url
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM job_dependencies AS dep
+           JOIN jobs AS dep_jobs ON dep.depends_on_job_id = dep_jobs.id
+           WHERE dep.job_id = jobs.id
+             AND dep_jobs.status != 'done'
+         )
+         AND NOT EXISTS (
+           SELECT 1 FROM job_dependencies AS dep
+           JOIN jobs AS dep_jobs ON dep.depends_on_job_id = dep_jobs.id
+           WHERE dep.job_id = jobs.id
+             AND dep_jobs.status = 'failed'
          )
        ORDER BY datetime(created_at) ASC
        LIMIT 1`
@@ -300,5 +323,110 @@ export const isWorktreeInUse = (worktreePath: string, excludeJobIds: string[] = 
   const stmt = db.prepare(`SELECT COUNT(*) as count FROM jobs ${whereClause}`);
   const params = excludeJobIds.length ? [worktreePath, ...excludeJobIds] : [worktreePath];
   const result = stmt.get(...params) as { count: number };
+  return result.count > 0;
+};
+
+// ========== Job Dependencies Functions (DAG Support) ==========
+
+/**
+ * Set job dependencies for a given job.
+ * This should be called within a transaction along with createJob.
+ */
+export const setJobDependencies = (jobId: string, dependsOn: string[]): void => {
+  if (!dependsOn || dependsOn.length === 0) return;
+
+  const db = getDb();
+  const insertStmt = db.prepare('INSERT INTO job_dependencies (job_id, depends_on_job_id) VALUES (?, ?)');
+
+  for (const depId of dependsOn) {
+    insertStmt.run(jobId, depId);
+  }
+};
+
+/**
+ * Get job IDs that the given job depends on.
+ */
+export const getJobDependencies = (jobId: string): string[] => {
+  const db = getDb();
+  const stmt = db.prepare('SELECT depends_on_job_id FROM job_dependencies WHERE job_id = ?');
+  const rows = stmt.all(jobId) as Array<{ depends_on_job_id: string }>;
+  return rows.map((r) => r.depends_on_job_id);
+};
+
+/**
+ * Get job IDs that depend on the given job.
+ */
+export const getDependentJobs = (jobId: string): string[] => {
+  const db = getDb();
+  const stmt = db.prepare('SELECT job_id FROM job_dependencies WHERE depends_on_job_id = ?');
+  const rows = stmt.all(jobId) as Array<{ job_id: string }>;
+  return rows.map((r) => r.job_id);
+};
+
+/**
+ * Check if adding the given dependencies would create a circular dependency.
+ * Uses depth-first search to detect cycles.
+ */
+export const checkCircularDependency = (jobId: string, newDependencies: string[]): boolean => {
+  const db = getDb();
+  const visited = new Set<string>();
+  const recursionStack = new Set<string>();
+
+  const dfs = (currentJobId: string): boolean => {
+    visited.add(currentJobId);
+    recursionStack.add(currentJobId);
+
+    // Get dependencies for current job
+    const stmt = db.prepare('SELECT depends_on_job_id FROM job_dependencies WHERE job_id = ?');
+    const rows = stmt.all(currentJobId) as Array<{ depends_on_job_id: string }>;
+
+    // If we're checking the original job, also consider the new dependencies
+    const dependencies = currentJobId === jobId ? [...rows.map((r) => r.depends_on_job_id), ...newDependencies] : rows.map((r) => r.depends_on_job_id);
+
+    for (const depId of dependencies) {
+      if (!visited.has(depId)) {
+        if (dfs(depId)) return true;
+      } else if (recursionStack.has(depId)) {
+        // Cycle detected
+        return true;
+      }
+    }
+
+    recursionStack.delete(currentJobId);
+    return false;
+  };
+
+  return dfs(jobId);
+};
+
+/**
+ * Check if all dependencies for a job are resolved (status = 'done').
+ */
+export const areDependenciesResolved = (jobId: string): boolean => {
+  const db = getDb();
+  const stmt = db.prepare(
+    `SELECT COUNT(*) as count
+     FROM job_dependencies AS dep
+     JOIN jobs AS dep_jobs ON dep.depends_on_job_id = dep_jobs.id
+     WHERE dep.job_id = ?
+       AND dep_jobs.status != 'done'`
+  );
+  const result = stmt.get(jobId) as { count: number };
+  return result.count === 0;
+};
+
+/**
+ * Check if any dependency for a job has failed.
+ */
+export const hasFailedDependency = (jobId: string): boolean => {
+  const db = getDb();
+  const stmt = db.prepare(
+    `SELECT COUNT(*) as count
+     FROM job_dependencies AS dep
+     JOIN jobs AS dep_jobs ON dep.depends_on_job_id = dep_jobs.id
+     WHERE dep.job_id = ?
+       AND dep_jobs.status = 'failed'`
+  );
+  const result = stmt.get(jobId) as { count: number };
   return result.count > 0;
 };

@@ -28,6 +28,7 @@ const enqueueCodexJobSchema = z.object({
   feature_id: z.string().min(1, 'Feature ID cannot be empty.').optional(),
   feature_part: z.string().min(1, 'Feature part cannot be empty.').optional(),
   push_mode: z.enum(['always', 'never']).optional(),
+  depends_on: z.array(z.string().uuid('Each dependency must be a valid job UUID.')).optional().describe('Job IDs that this job depends on (must complete before this job can start)'),
 });;
 
 const listJobsSchema = z.object({
@@ -52,6 +53,10 @@ const cleanupJobsSchema = z.object({
 const continueCodexJobSchema = z.object({
   id: z.string().min(1, 'Job ID is required.'),
   prompt: z.string().min(1, 'Provide a follow-up prompt.'),
+});
+
+const getJobDependenciesSchema = z.object({
+  id: z.string().min(1, 'Job ID is required.'),
 });
 
 const parseResultSummary = (value: string | null): Record<string, unknown> => {
@@ -153,7 +158,7 @@ const buildConversationHistory = (job: Job): string => {
 export const registerJobTools = (server: McpServer, orchestratorClient = new OrchestratorClient()): void => {
   server.registerTool('enqueue_codex_job', {
     title: 'Enqueue Codex Job',
-    description: 'Enqueue a new Codex worker job via the orchestrator (optionally tagging it with feature metadata).',
+    description: 'Enqueue a new Codex worker job via the orchestrator (optionally tagging it with feature metadata). Supports job dependencies via depends_on parameter.',
     inputSchema: enqueueCodexJobSchema,
   }, async (args) => {
     const job = await orchestratorClient.enqueueCodexJob({
@@ -165,9 +170,13 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
       feature_id: args.feature_id?.trim() || undefined,
       feature_part: args.feature_part?.trim() || undefined,
       push_mode: args.push_mode || undefined,
+      depends_on: args.depends_on || undefined,
     });
 
-    const summary = `Enqueued Codex job ${job.id}\n\n${formatJob(job)}`;
+    const dependencyNote = args.depends_on?.length
+      ? `\n\nDependencies: This job depends on ${args.depends_on.length} job(s): ${args.depends_on.join(', ')}`
+      : '';
+    const summary = `Enqueued Codex job ${job.id}\n\n${formatJob(job)}${dependencyNote}`;
     return createTextResult(summary, { job });
   });
 
@@ -241,6 +250,41 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
     parts.push('', jobList);
 
     return createTextResult(parts.join('\n\n'), { deleted: result.deleted, jobs: result.jobs });
+  });
+
+  server.registerTool('get_job_dependencies', {
+    title: 'Get Job Dependencies',
+    description: 'Fetch dependency information for a job. Returns jobs that this job depends on (upstream) and jobs that depend on this job (downstream).',
+    inputSchema: getJobDependenciesSchema,
+  }, async (args) => {
+    const jobId = args.id.trim();
+    const dependencies = await orchestratorClient.getJobDependencies(jobId);
+
+    const upstreamCount = dependencies.depends_on.length;
+    const downstreamCount = dependencies.depended_by.length;
+
+    const parts: string[] = [
+      `Job ${jobId} dependency information:`,
+      '',
+      `Upstream dependencies (must complete before this job): ${upstreamCount}`,
+    ];
+
+    if (upstreamCount > 0) {
+      parts.push(...dependencies.depends_on.map((id) => `  - ${id}`));
+    } else {
+      parts.push('  (None)');
+    }
+
+    parts.push('');
+    parts.push(`Downstream dependencies (blocked until this job completes): ${downstreamCount}`);
+
+    if (downstreamCount > 0) {
+      parts.push(...dependencies.depended_by.map((id) => `  - ${id}`));
+    } else {
+      parts.push('  (None)');
+    }
+
+    return createTextResult(parts.join('\n'), { dependencies });
   });
 
   server.registerTool('continue_codex_job', {

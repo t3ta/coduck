@@ -72,6 +72,19 @@ export const runMigrations = (): void => {
   }
 
   db.exec('CREATE INDEX IF NOT EXISTS idx_jobs_feature_id ON jobs(feature_id)');
+
+  // Job dependencies table for DAG support
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS job_dependencies (
+      job_id TEXT NOT NULL,
+      depends_on_job_id TEXT NOT NULL,
+      PRIMARY KEY (job_id, depends_on_job_id),
+      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE,
+      FOREIGN KEY (depends_on_job_id) REFERENCES jobs(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_job_dependencies_job_id ON job_dependencies(job_id);
+    CREATE INDEX IF NOT EXISTS idx_job_dependencies_depends_on ON job_dependencies(depends_on_job_id);
+  `);
 };;
 
 export const initDb = (): BetterSqlite3Database => {

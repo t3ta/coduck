@@ -9,6 +9,7 @@ const EXPECTED_TOOLS = [
   'enqueue_codex_job',
   'list_jobs',
   'get_job',
+  'get_job_dependencies',
   'delete_job',
   'cleanup_jobs',
   'continue_codex_job',
@@ -40,7 +41,7 @@ describe('MCP Server', () => {
       const result = await client.request({ method: 'tools/list' }, ListToolsResultSchema);
 
       expect(result.tools).toBeDefined();
-      expect(result.tools.length).toBe(10);
+      expect(result.tools.length).toBe(11);
 
       const toolNames = result.tools.map((tool) => tool.name);
       for (const expected of EXPECTED_TOOLS) {
