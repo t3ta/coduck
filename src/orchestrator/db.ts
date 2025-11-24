@@ -18,6 +18,7 @@ const createConnection = (): BetterSqlite3Database => {
   ensureDbDirectory(DEFAULT_DB_PATH);
   const instance = new DatabaseConstructor(DEFAULT_DB_PATH);
   instance.pragma('journal_mode = WAL');
+  instance.pragma('foreign_keys = ON');
   return instance;
 };
 

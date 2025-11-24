@@ -335,10 +335,13 @@ export const isWorktreeInUse = (worktreePath: string, excludeJobIds: string[] = 
 export const setJobDependencies = (jobId: string, dependsOn: string[]): void => {
   if (!dependsOn || dependsOn.length === 0) return;
 
+  // Deduplicate dependencies to prevent primary key constraint errors
+  const uniqueDeps = [...new Set(dependsOn)];
+
   const db = getDb();
   const insertStmt = db.prepare('INSERT INTO job_dependencies (job_id, depends_on_job_id) VALUES (?, ?)');
 
-  for (const depId of dependsOn) {
+  for (const depId of uniqueDeps) {
     insertStmt.run(jobId, depId);
   }
 };
