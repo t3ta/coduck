@@ -252,9 +252,12 @@ router.get('/:id/logs', (req, res, next) => {
 
     const merged: Array<{ stream: 'stdout' | 'stderr'; text: string; timestamp?: string }> = [];
     const seen = new Set<string>();
+    let seq = 0;
 
     for (const log of [...dbLogs, ...legacyLogs]) {
-      const key = `${log.stream}:${log.text}:${log.timestamp ?? ''}`;
+      const key = log.timestamp
+        ? `${log.stream}:${log.text}:${log.timestamp}`
+        : `${log.stream}:${log.text}:seq:${seq++}`;
       if (seen.has(key)) continue;
       seen.add(key);
       merged.push(log);
@@ -392,8 +395,11 @@ router.post('/:id/complete', (req, res, next) => {
 
     if (logsToPersist.length) {
       const seen = new Set<string>();
+      let seq = 0;
       for (const log of logsToPersist) {
-        const key = `${log.stream}:${log.text}`;
+        const key = log.timestamp
+          ? `${log.stream}:${log.text}:${log.timestamp}`
+          : `${log.stream}:${log.text}:seq:${seq++}`;
         if (seen.has(key)) continue;
         seen.add(key);
         addJobLog(id, log.stream, log.text);
