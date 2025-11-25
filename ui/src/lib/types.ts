@@ -23,6 +23,7 @@ export interface Job {
   spec_json: SpecJson;
   result_summary: unknown | null;
   conversation_id: string | null;
+  resume_requested?: boolean;
   created_at: string;
   updated_at: string;
 }

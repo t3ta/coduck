@@ -533,3 +533,20 @@ export const hasFailedDependency = (jobId: string): boolean => {
   const result = stmt.get(jobId) as { count: number };
   return result.count > 0;
 };
+
+/**
+ * Resume a timed-out job by setting it back to pending with resume_requested flag.
+ */
+export const resumeJob = (id: string): void => {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const stmt = db.prepare(`
+    UPDATE jobs
+    SET status = 'pending', resume_requested = 1, updated_at = ?
+    WHERE id = ?
+  `);
+  const result = stmt.run(now, id);
+  if (result.changes === 0) {
+    throw new Error(`Job ${id} not found`);
+  }
+};

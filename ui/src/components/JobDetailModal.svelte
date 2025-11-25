@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Job } from '../lib/types';
+  import { resumeJob } from '../lib/api';
   import LogViewer from './LogViewer.svelte';
 
   type Props = {
@@ -11,6 +12,35 @@
 
   type TabType = 'details' | 'logs';
   let activeTab = $state<TabType>('details');
+  let resuming = $state(false);
+  let resumeError = $state<string | null>(null);
+
+  // Check if job is resumable (failed + timed_out + has conversation_id)
+  function isResumable(job: Job | null): boolean {
+    if (!job || job.status !== 'failed' || !job.conversation_id) return false;
+    try {
+      const summary = typeof job.result_summary === 'string'
+        ? JSON.parse(job.result_summary)
+        : job.result_summary;
+      return summary?.codex?.timed_out === true;
+    } catch {
+      return false;
+    }
+  }
+
+  async function handleResume() {
+    if (!job) return;
+    resuming = true;
+    resumeError = null;
+    try {
+      await resumeJob(job.id);
+      onClose();
+    } catch (err) {
+      resumeError = err instanceof Error ? err.message : String(err);
+    } finally {
+      resuming = false;
+    }
+  }
 
   function handleEscape(event: KeyboardEvent) {
     if (event.key === 'Escape') {
@@ -188,6 +218,19 @@
                   return job.result_summary;
                 }
               })()}</pre>
+            </section>
+          {/if}
+
+          {#if isResumable(job)}
+            <section class="section">
+              <h3>タイムアウト継続</h3>
+              <p class="resume-description">このジョブはタイムアウトしました。続きを実行できます。</p>
+              {#if resumeError}
+                <p class="resume-error">{resumeError}</p>
+              {/if}
+              <button class="resume-btn" onclick={handleResume} disabled={resuming}>
+                {resuming ? '処理中...' : '続きを実行'}
+              </button>
             </section>
           {/if}
         {:else if activeTab === 'logs'}
@@ -449,5 +492,40 @@
   ul li {
     line-height: 1.6;
     margin-bottom: 0.25rem;
+  }
+
+  .resume-description {
+    margin: 0 0 1rem 0;
+    color: #666;
+  }
+
+  .resume-error {
+    margin: 0 0 1rem 0;
+    color: #f44336;
+    padding: 0.5rem;
+    background: #ffebee;
+    border-radius: 4px;
+  }
+
+  .resume-btn {
+    padding: 0.75rem 1.5rem;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .resume-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+  }
+
+  .resume-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 </style>
