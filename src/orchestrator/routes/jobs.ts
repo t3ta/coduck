@@ -405,15 +405,29 @@ router.post('/:id/complete', (req, res, next) => {
     );
 
     if (logsToPersist.length) {
+      const makeKey = (log: { stream: 'stdout' | 'stderr'; text: string; timestamp?: string }, seq?: number): string => {
+        if (log.timestamp) return `${log.stream}:${log.text}:${log.timestamp}`;
+        if (seq !== undefined) return `${log.stream}:${log.text}:seq:${seq}`;
+        return `${log.stream}:${log.text}`;
+      };
+
       const seen = new Set<string>();
+      // Seed with existing DB logs (prevents double-write when completion repeats streamed logs)
+      for (const existingLog of existingDbLogs) {
+        seen.add(makeKey({ stream: existingLog.stream, text: existingLog.text, timestamp: existingLog.created_at }));
+        seen.add(makeKey({ stream: existingLog.stream, text: existingLog.text })); // fallback for logs without timestamp
+      }
+
       let seq = 0;
       for (const log of logsToPersist) {
-        const key = log.timestamp
-          ? `${log.stream}:${log.text}:${log.timestamp}`
-          : `${log.stream}:${log.text}:seq:${seq++}`;
-        if (seen.has(key)) continue;
+        const key = makeKey(log, seq);
+        if (seen.has(key)) {
+          seq += 1;
+          continue;
+        }
         seen.add(key);
         addJobLog(id, log.stream, log.text);
+        seq += 1;
       }
     }
 
