@@ -59,11 +59,41 @@ const cleanupJobsSchema = z.object({
   maxAgeDays: z.number().int().nonnegative().optional(),
 });
 
+type LogEntry = { stream: 'stdout' | 'stderr'; text: string };
+
 const toFilterValue = (value: unknown): string | undefined => {
   if (Array.isArray(value)) {
     return value[0];
   }
   return typeof value === 'string' ? value : undefined;
+};
+
+const extractLogsFromSummary = (value: unknown): LogEntry[] => {
+  if (!value) return [];
+
+  let parsed: unknown = value;
+  if (typeof value === 'string') {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      return [];
+    }
+  }
+
+  if (!parsed || typeof parsed !== 'object') return [];
+  const maybeLogs = (parsed as Record<string, unknown>).logs;
+  if (!Array.isArray(maybeLogs)) return [];
+
+  const logs: LogEntry[] = [];
+  for (const entry of maybeLogs) {
+    if (!entry || typeof entry !== 'object') continue;
+    const stream = (entry as Record<string, unknown>).stream === 'stderr' ? 'stderr' : 'stdout';
+    const text = typeof (entry as Record<string, unknown>).text === 'string' ? (entry as Record<string, unknown>).text : '';
+    if (text) {
+      logs.push({ stream, text });
+    }
+  }
+  return logs;
 };
 
 const stripLogsFromJob = (job: any): any => {
@@ -341,20 +371,25 @@ router.post('/:id/complete', (req, res, next) => {
       return res.status(404).json({ error: 'Job not found' });
     }
     const existingDbLogs = getJobLogs(id);
+    const logsToPersist: LogEntry[] = [];
+
+    // If no logs are in the new table yet, migrate any embedded legacy logs
     if (existingDbLogs.length === 0 && existingJob.result_summary) {
-      try {
-        const parsed = JSON.parse(existingJob.result_summary);
-        if (parsed && typeof parsed === 'object' && Array.isArray((parsed as Record<string, unknown>).logs)) {
-          for (const logEntry of (parsed as { logs: Array<Record<string, unknown>> }).logs) {
-            const stream = logEntry.stream === 'stderr' ? 'stderr' : 'stdout';
-            const text = typeof logEntry.text === 'string' ? logEntry.text : '';
-            if (text) {
-              addJobLog(id, stream, text);
-            }
-          }
-        }
-      } catch {
-        // Ignore malformed legacy summaries; proceed with sanitization
+      logsToPersist.push(...extractLogsFromSummary(existingJob.result_summary));
+    }
+
+    // Always persist logs provided in the completion payload (workers that only send final logs)
+    if (body.result_summary) {
+      logsToPersist.push(...extractLogsFromSummary(body.result_summary));
+    }
+
+    if (logsToPersist.length) {
+      const seen = new Set<string>();
+      for (const log of logsToPersist) {
+        const key = `${log.stream}:${log.text}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        addJobLog(id, log.stream, log.text);
       }
     }
 
