@@ -5,6 +5,7 @@
   "scripts": {
     "build": "tsc",
     "test": "tsx tests/run-tests.ts",
+    "start": "npm run orchestrator & npm run worker",
     "orchestrator": "tsx src/orchestrator.ts",
     "worker": "tsx src/worker.ts",
     "mcp": "tsx src/mcp.ts",
