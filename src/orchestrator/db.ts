@@ -74,6 +74,20 @@ export const runMigrations = (): void => {
 
   db.exec('CREATE INDEX IF NOT EXISTS idx_jobs_feature_id ON jobs(feature_id)');
 
+  // Dedicated job logs table (logs are no longer stored inside result_summary)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS job_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      job_id TEXT NOT NULL,
+      stream TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (job_id) REFERENCES jobs(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_job_logs_job_id ON job_logs(job_id);
+    CREATE INDEX IF NOT EXISTS idx_job_logs_created_at ON job_logs(created_at);
+  `);
+
   // Job dependencies table for DAG support
   db.exec(`
     CREATE TABLE IF NOT EXISTS job_dependencies (
