@@ -21,6 +21,14 @@ type JobRow = {
   updated_at: string;
 };
 
+export type JobLog = {
+  id: number;
+  job_id: string;
+  stream: 'stdout' | 'stderr';
+  text: string;
+  created_at: string;
+};
+
 export type CreateJobInput = Omit<Job, 'id' | 'created_at' | 'updated_at'>;
 
 const JOB_COLUMNS = [
@@ -41,11 +49,41 @@ const JOB_COLUMNS = [
   'updated_at',
 ].join(', ');;
 
+export const sanitizeResultSummaryValue = (value: unknown): unknown => {
+  if (value === undefined || value === null) {
+    return value;
+  }
+
+  // Remove logs from plain objects
+  if (typeof value === 'object') {
+    const sanitized = Array.isArray(value) ? [...value] : { ...(value as Record<string, unknown>) };
+    if ('logs' in sanitized) {
+      delete (sanitized as Record<string, unknown>).logs;
+    }
+    return sanitized;
+  }
+
+  // Try to parse JSON strings to drop logs while preserving other fields
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === 'object') {
+        return sanitizeResultSummaryValue(parsed);
+      }
+    } catch {
+      // Keep original string if it's not JSON
+    }
+  }
+
+  return value;
+};
+
 const serializeResultSummary = (value: unknown): string | null => {
   if (value === undefined || value === null) {
     return null;
   }
-  return typeof value === 'string' ? value : JSON.stringify(value);
+  const sanitized = sanitizeResultSummaryValue(value);
+  return typeof sanitized === 'string' ? sanitized : JSON.stringify(sanitized);
 };
 
 const deserializeJob = (row: JobRow): Job => {
@@ -340,6 +378,30 @@ export const deleteJobs = (filter: { statuses?: JobStatus[]; maxAgeDays?: number
   });
 
   return transaction(statuses, cutoffIso);
+};
+
+// ======== Job Logs (stored separately from result_summary) ========
+
+export const addJobLog = (jobId: string, stream: 'stdout' | 'stderr', text: string): JobLog => {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const stmt = db.prepare('INSERT INTO job_logs (job_id, stream, text, created_at) VALUES (?, ?, ?, ?)');
+  const result = stmt.run(jobId, stream, text, now);
+
+  return {
+    id: Number(result.lastInsertRowid),
+    job_id: jobId,
+    stream,
+    text,
+    created_at: now,
+  };
+};
+
+export const getJobLogs = (jobId: string): JobLog[] => {
+  const db = getDb();
+  const stmt = db.prepare('SELECT id, job_id, stream, text, created_at FROM job_logs WHERE job_id = ? ORDER BY id ASC');
+  const rows = stmt.all(jobId) as JobLog[];
+  return rows;
 };
 
 export const isWorktreeInUse = (worktreePath: string, excludeJobIds: string[] = []): boolean => {

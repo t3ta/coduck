@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import type { JobStatus, SpecJson } from '../../shared/types.js';
-import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJobStatus, isWorktreeInUse, setJobDependencies, getJobDependencies, getDependentJobs, checkCircularDependency } from '../models/job.js';
+import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJobStatus, isWorktreeInUse, setJobDependencies, getJobDependencies, getDependentJobs, checkCircularDependency, addJobLog, getJobLogs, sanitizeResultSummaryValue } from '../models/job.js';
 import { removeWorktree } from '../../worker/worktree.js';
 import { orchestratorEvents } from '../events.js';
 import { getDb } from '../db.js';
@@ -69,14 +69,13 @@ const toFilterValue = (value: unknown): string | undefined => {
 const stripLogsFromJob = (job: any): any => {
   const jobWithoutLogs = { ...job };
   if (jobWithoutLogs.result_summary) {
-    try {
-      const summary = JSON.parse(jobWithoutLogs.result_summary);
-      if (summary.logs) {
-        delete summary.logs;
-        jobWithoutLogs.result_summary = JSON.stringify(summary);
-      }
-    } catch {
-      // Keep original if JSON parsing fails
+    const sanitized = sanitizeResultSummaryValue(jobWithoutLogs.result_summary);
+    if (sanitized === undefined || sanitized === null) {
+      jobWithoutLogs.result_summary = null;
+    } else if (typeof sanitized === 'string') {
+      jobWithoutLogs.result_summary = sanitized;
+    } else {
+      jobWithoutLogs.result_summary = JSON.stringify(sanitized);
     }
   }
   return jobWithoutLogs;
@@ -210,19 +209,29 @@ router.get('/:id/logs', (req, res, next) => {
       return res.status(404).json({ error: 'Job not found' });
     }
 
-    // Extract logs from result_summary
-    if (!job.result_summary) {
-      return res.json([]);
+    const logs = getJobLogs(job.id);
+    if (logs.length > 0) {
+      // Preserve the legacy shape (timestamp instead of created_at) for compatibility
+      const normalized = logs.map((log) => ({
+        stream: log.stream,
+        text: log.text,
+        timestamp: log.created_at,
+      }));
+      return res.json(normalized);
     }
 
-    try {
-      const summary = JSON.parse(job.result_summary);
-      const logs = summary.logs || [];
-      res.json(logs);
-    } catch {
-      // If result_summary is not valid JSON (e.g., old jobs), return empty array
-      return res.json([]);
+    // Backwards compatibility for jobs that still have logs embedded in result_summary
+    if (job.result_summary) {
+      try {
+        const summary = JSON.parse(job.result_summary);
+        const legacyLogs = summary.logs || [];
+        return res.json(legacyLogs);
+      } catch {
+        return res.json([]);
+      }
     }
+
+    return res.json([]);
   } catch (error) {
     next(error);
   }
@@ -306,26 +315,7 @@ router.post('/:id/logs', (req, res, next) => {
     }
 
     // Append log to result_summary
-    let currentSummary: Record<string, unknown> = {};
-    if (job.result_summary) {
-      try {
-        currentSummary = JSON.parse(job.result_summary);
-      } catch {
-        // If result_summary is not valid JSON (e.g., old jobs), start fresh
-        currentSummary = {};
-      }
-    }
-    if (!currentSummary.logs) {
-      currentSummary.logs = [];
-    }
-    (currentSummary.logs as Array<Record<string, unknown>>).push({
-      stream: body.stream,
-      text: body.text,
-      timestamp: new Date().toISOString(),
-    });
-
-    // Update job with new logs
-    updateJobStatus(id, job.status as JobStatus, currentSummary, [job.status as JobStatus]);
+    addJobLog(id, body.stream, body.text);
 
     // Emit SSE event
     orchestratorEvents.emit({
@@ -346,18 +336,7 @@ router.post('/:id/complete', (req, res, next) => {
     const hasConversationId = Object.hasOwn(body, 'conversation_id');
 
     // Preserve logs from the existing result_summary
-    const existingJob = getJob(id);
-    let finalSummary = body.result_summary;
-    if (existingJob?.result_summary) {
-      try {
-        const existing = JSON.parse(existingJob.result_summary);
-        if (existing.logs && Array.isArray(existing.logs)) {
-          finalSummary = { ...(body.result_summary || {}), logs: existing.logs };
-        }
-      } catch {
-        // Ignore JSON parse errors
-      }
-    }
+    const finalSummary = body.result_summary === undefined ? undefined : sanitizeResultSummaryValue(body.result_summary);
 
     updateJobStatus(
       id,
