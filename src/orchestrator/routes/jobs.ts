@@ -335,7 +335,30 @@ router.post('/:id/complete', (req, res, next) => {
     const body = completeJobSchema.parse(req.body);
     const hasConversationId = Object.hasOwn(body, 'conversation_id');
 
-    // Preserve logs from the existing result_summary
+    // Backfill legacy embedded logs into job_logs (once) before stripping them from result_summary
+    const existingJob = getJob(id);
+    if (!existingJob) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    const existingDbLogs = getJobLogs(id);
+    if (existingDbLogs.length === 0 && existingJob.result_summary) {
+      try {
+        const parsed = JSON.parse(existingJob.result_summary);
+        if (parsed && typeof parsed === 'object' && Array.isArray((parsed as Record<string, unknown>).logs)) {
+          for (const logEntry of (parsed as { logs: Array<Record<string, unknown>> }).logs) {
+            const stream = logEntry.stream === 'stderr' ? 'stderr' : 'stdout';
+            const text = typeof logEntry.text === 'string' ? logEntry.text : '';
+            if (text) {
+              addJobLog(id, stream, text);
+            }
+          }
+        }
+      } catch {
+        // Ignore malformed legacy summaries; proceed with sanitization
+      }
+    }
+
+    // Sanitize summary (remove logs) before update
     const finalSummary = body.result_summary === undefined ? undefined : sanitizeResultSummaryValue(body.result_summary);
 
     updateJobStatus(
