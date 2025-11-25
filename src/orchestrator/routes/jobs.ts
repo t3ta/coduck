@@ -59,7 +59,7 @@ const cleanupJobsSchema = z.object({
   maxAgeDays: z.number().int().nonnegative().optional(),
 });
 
-type LogEntry = { stream: 'stdout' | 'stderr'; text: string };
+type LogEntry = { stream: 'stdout' | 'stderr'; text: string; timestamp?: string };
 
 const toFilterValue = (value: unknown): string | undefined => {
   if (Array.isArray(value)) {
@@ -90,7 +90,10 @@ const extractLogsFromSummary = (value: unknown): LogEntry[] => {
     const stream = (entry as Record<string, unknown>).stream === 'stderr' ? 'stderr' : 'stdout';
     const text = typeof (entry as Record<string, unknown>).text === 'string' ? (entry as Record<string, unknown>).text : '';
     if (text) {
-      logs.push({ stream, text });
+      const timestamp = typeof (entry as Record<string, unknown>).timestamp === 'string'
+        ? (entry as Record<string, unknown>).timestamp
+        : undefined;
+      logs.push({ stream, text, timestamp });
     }
   }
   return logs;
@@ -239,29 +242,33 @@ router.get('/:id/logs', (req, res, next) => {
       return res.status(404).json({ error: 'Job not found' });
     }
 
-    const logs = getJobLogs(job.id);
-    if (logs.length > 0) {
-      // Preserve the legacy shape (timestamp instead of created_at) for compatibility
-      const normalized = logs.map((log) => ({
-        stream: log.stream,
-        text: log.text,
-        timestamp: log.created_at,
-      }));
-      return res.json(normalized);
+    const dbLogs = getJobLogs(job.id).map((log) => ({
+      stream: log.stream,
+      text: log.text,
+      timestamp: log.created_at,
+    }));
+
+    const legacyLogs = extractLogsFromSummary(job.result_summary);
+
+    const merged: Array<{ stream: 'stdout' | 'stderr'; text: string; timestamp?: string }> = [];
+    const seen = new Set<string>();
+
+    for (const log of [...dbLogs, ...legacyLogs]) {
+      const key = `${log.stream}:${log.text}:${log.timestamp ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(log);
     }
 
-    // Backwards compatibility for jobs that still have logs embedded in result_summary
-    if (job.result_summary) {
-      try {
-        const summary = JSON.parse(job.result_summary);
-        const legacyLogs = summary.logs || [];
-        return res.json(legacyLogs);
-      } catch {
-        return res.json([]);
-      }
-    }
+    // Sort by timestamp when available to produce stable order
+    merged.sort((a, b) => {
+      if (a.timestamp && b.timestamp) return a.timestamp.localeCompare(b.timestamp);
+      if (a.timestamp) return -1;
+      if (b.timestamp) return 1;
+      return 0;
+    });
 
-    return res.json([]);
+    return res.json(merged);
   } catch (error) {
     next(error);
   }
