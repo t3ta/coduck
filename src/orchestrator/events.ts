@@ -3,6 +3,7 @@ import type { Job } from '../shared/types.js';
 export type OrchestratorEvent =
   | { type: 'job_created'; data: Job }
   | { type: 'job_updated'; data: Job }
+  | { type: 'job_deleted'; data: { id: string } }
   | { type: 'worktree_changed' }
   | { type: 'log_appended'; data: { jobId: string; stream: 'stdout' | 'stderr'; text: string } };
 

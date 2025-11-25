@@ -294,6 +294,7 @@ router.delete('/:id', async (req, res, next) => {
     } else {
       console.log(`Worktree ${job.worktree_path} still in use by other jobs, skipping removal`);
     }
+    orchestratorEvents.emit({ type: 'job_deleted', data: { id: job.id } });
     res.status(200).json(stripLogsFromJob(job));
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('Cannot delete job')) {

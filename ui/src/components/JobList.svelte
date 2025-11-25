@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { listJobs } from '../lib/api';
+  import { listJobs, deleteJob } from '../lib/api';
   import { sseClient } from '../lib/sse';
   import type { Job, JobStatus } from '../lib/types';
 
@@ -14,6 +14,8 @@
   let loading = $state(true);
   let error = $state<string | null>(null);
   let activeTab = $state<JobStatus | 'all'>('all');
+  let selectedIds = $state<Set<string>>(new Set());
+  let deleting = $state(false);
 
   const statusTabs: { label: string; value: JobStatus | 'all'; color: string }[] = [
     { label: 'All', value: 'all', color: '#666' },
@@ -40,8 +42,93 @@
     activeTab === 'all' ? jobs : jobs.filter((j) => j.status === activeTab)
   );
 
+  const deletableSelectedIds = $derived(
+    new Set([...selectedIds].filter((id) => {
+      const job = jobs.find((j) => j.id === id);
+      return job && job.status !== 'running' && job.status !== 'awaiting_input';
+    }))
+  );
+
+  const allFilteredSelected = $derived(
+    filteredJobs.length > 0 && filteredJobs.every((j) => selectedIds.has(j.id))
+  );
+
   function handleJobClick(job: Job) {
     onSelectJob?.(job);
+  }
+
+  function toggleSelect(event: MouseEvent, jobId: string) {
+    event.stopPropagation();
+    const newSet = new Set(selectedIds);
+    if (newSet.has(jobId)) {
+      newSet.delete(jobId);
+    } else {
+      newSet.add(jobId);
+    }
+    selectedIds = newSet;
+  }
+
+  function toggleSelectAll() {
+    if (allFilteredSelected) {
+      const newSet = new Set(selectedIds);
+      for (const job of filteredJobs) {
+        newSet.delete(job.id);
+      }
+      selectedIds = newSet;
+    } else {
+      const newSet = new Set(selectedIds);
+      for (const job of filteredJobs) {
+        newSet.add(job.id);
+      }
+      selectedIds = newSet;
+    }
+  }
+
+  function clearSelection() {
+    selectedIds = new Set();
+  }
+
+  async function handleBulkDelete() {
+    const ids = [...deletableSelectedIds];
+    if (ids.length === 0) return;
+
+    const undeletableCount = selectedIds.size - ids.length;
+    let message = `${ids.length}件のジョブを削除しますか？`;
+    if (undeletableCount > 0) {
+      message += `\n（実行中/入力待ちの${undeletableCount}件は削除されません）`;
+    }
+
+    if (!confirm(message)) return;
+
+    deleting = true;
+    const errors: string[] = [];
+
+    for (const id of ids) {
+      try {
+        await deleteJob(id);
+      } catch (err) {
+        errors.push(err instanceof Error ? err.message : `Failed to delete ${id}`);
+      }
+    }
+
+    deleting = false;
+    clearSelection();
+
+    if (errors.length > 0) {
+      alert(`${errors.length}件の削除に失敗しました:\n${errors.join('\n')}`);
+    }
+  }
+
+  async function handleDeleteJob(event: MouseEvent, job: Job) {
+    event.stopPropagation();
+    if (!confirm(`ジョブ "${job.spec_json.goal.slice(0, 50)}..." を削除しますか？`)) {
+      return;
+    }
+    try {
+      await deleteJob(job.id);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '削除に失敗しました');
+    }
   }
 
   function getStatusColor(status: JobStatus): string {
@@ -73,6 +160,13 @@
           jobs[index] = event.data;
           jobs = [...jobs];
         }
+      } else if (event.type === 'job_deleted') {
+        jobs = jobs.filter((j) => j.id !== event.data.id);
+        if (selectedIds.has(event.data.id)) {
+          const newSet = new Set(selectedIds);
+          newSet.delete(event.data.id);
+          selectedIds = newSet;
+        }
       }
     });
 
@@ -101,6 +195,25 @@
     {/each}
   </div>
 
+  {#if selectedIds.size > 0}
+    <div class="selection-bar">
+      <span class="selection-count">{selectedIds.size}件選択中</span>
+      <div class="selection-actions">
+        <button class="select-all-btn" onclick={toggleSelectAll}>
+          {allFilteredSelected ? '選択解除' : '全て選択'}
+        </button>
+        <button class="clear-btn" onclick={clearSelection}>クリア</button>
+        <button
+          class="bulk-delete-btn"
+          onclick={handleBulkDelete}
+          disabled={deleting || deletableSelectedIds.size === 0}
+        >
+          {deleting ? '削除中...' : `削除 (${deletableSelectedIds.size})`}
+        </button>
+      </div>
+    </div>
+  {/if}
+
   {#if loading}
     <p class="message">Loading jobs...</p>
   {:else if error}
@@ -110,15 +223,32 @@
   {:else}
     <div class="jobs">
       {#each filteredJobs as job (job.id)}
-        <div class="job-card" onclick={() => handleJobClick(job)}>
+        <div class="job-card" class:selected={selectedIds.has(job.id)} onclick={() => handleJobClick(job)}>
           <div class="job-header">
-            <span
-              class="status-badge"
-              style="background-color: {getStatusColor(job.status)}"
-            >
-              {job.status}
-            </span>
-            <span class="job-id">{job.id.slice(0, 8)}</span>
+            <div class="job-header-left">
+              <input
+                type="checkbox"
+                class="job-checkbox"
+                checked={selectedIds.has(job.id)}
+                onclick={(e) => toggleSelect(e, job.id)}
+              />
+              <span
+                class="status-badge"
+                style="background-color: {getStatusColor(job.status)}"
+              >
+                {job.status}
+              </span>
+            </div>
+            <div class="job-header-right">
+              <span class="job-id">{job.id.slice(0, 8)}</span>
+              <button
+                class="delete-btn"
+                onclick={(e) => handleDeleteJob(e, job)}
+                title="削除"
+              >
+                ×
+              </button>
+            </div>
           </div>
           <div class="job-goal">{job.spec_json.goal}</div>
           <div class="job-meta">
@@ -167,6 +297,63 @@
     border-color: var(--tab-color);
   }
 
+  .selection-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: #e3f2fd;
+    border-radius: 8px;
+    border: 1px solid #90caf9;
+  }
+
+  .selection-count {
+    font-weight: 500;
+    color: #1976d2;
+  }
+
+  .selection-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .select-all-btn,
+  .clear-btn {
+    padding: 0.375rem 0.75rem;
+    background: white;
+    border: 1px solid #90caf9;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: #1976d2;
+    transition: all 0.2s;
+  }
+
+  .select-all-btn:hover,
+  .clear-btn:hover {
+    background: #e3f2fd;
+  }
+
+  .bulk-delete-btn {
+    padding: 0.375rem 0.75rem;
+    background: #f44336;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: white;
+    transition: all 0.2s;
+  }
+
+  .bulk-delete-btn:hover:not(:disabled) {
+    background: #d32f2f;
+  }
+
+  .bulk-delete-btn:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+  }
+
   .message {
     padding: 2rem;
     text-align: center;
@@ -197,11 +384,29 @@
     transform: translateY(-2px);
   }
 
+  .job-card.selected {
+    border-color: #2196F3;
+    background: #f3f9ff;
+  }
+
   .job-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 0.75rem;
+  }
+
+  .job-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .job-checkbox {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: #2196F3;
   }
 
   .status-badge {
@@ -216,6 +421,32 @@
     font-family: monospace;
     color: #666;
     font-size: 0.875rem;
+  }
+
+  .job-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .delete-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    background: transparent;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    color: #999;
+    font-size: 1rem;
+    line-height: 1;
+    transition: all 0.2s;
+  }
+
+  .delete-btn:hover {
+    background: #f44336;
+    border-color: #f44336;
+    color: white;
   }
 
   .job-goal {
