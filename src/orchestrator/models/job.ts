@@ -382,9 +382,9 @@ export const deleteJobs = (filter: { statuses?: JobStatus[]; maxAgeDays?: number
 
 // ======== Job Logs (stored separately from result_summary) ========
 
-export const addJobLog = (jobId: string, stream: 'stdout' | 'stderr', text: string): JobLog => {
+export const addJobLog = (jobId: string, stream: 'stdout' | 'stderr', text: string, createdAt?: string): JobLog => {
   const db = getDb();
-  const now = new Date().toISOString();
+  const now = createdAt ?? new Date().toISOString();
   const stmt = db.prepare('INSERT INTO job_logs (job_id, stream, text, created_at) VALUES (?, ?, ?, ?)');
   const result = stmt.run(jobId, stream, text, now);
 

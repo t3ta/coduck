@@ -426,7 +426,7 @@ router.post('/:id/complete', (req, res, next) => {
           continue;
         }
         seen.add(key);
-        addJobLog(id, log.stream, log.text);
+        addJobLog(id, log.stream, log.text, log.timestamp);
         seq += 1;
       }
     }
