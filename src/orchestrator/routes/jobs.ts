@@ -393,6 +393,17 @@ router.post('/:id/complete', (req, res, next) => {
       logsToPersist.push(...extractLogsFromSummary(body.result_summary));
     }
 
+    // Sanitize summary (remove logs) before update
+    const finalSummary = body.result_summary === undefined ? undefined : sanitizeResultSummaryValue(body.result_summary);
+
+    updateJobStatus(
+      id,
+      body.status,
+      finalSummary,
+      ['running', 'awaiting_input'],
+      hasConversationId ? body.conversation_id ?? null : undefined
+    );
+
     if (logsToPersist.length) {
       const seen = new Set<string>();
       let seq = 0;
@@ -405,17 +416,6 @@ router.post('/:id/complete', (req, res, next) => {
         addJobLog(id, log.stream, log.text);
       }
     }
-
-    // Sanitize summary (remove logs) before update
-    const finalSummary = body.result_summary === undefined ? undefined : sanitizeResultSummaryValue(body.result_summary);
-
-    updateJobStatus(
-      id,
-      body.status,
-      finalSummary,
-      ['running', 'awaiting_input'],
-      hasConversationId ? body.conversation_id ?? null : undefined
-    );
 
     const job = getJob(id);
     if (!job) {
