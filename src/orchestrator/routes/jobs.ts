@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import type { JobStatus, SpecJson } from '../../shared/types.js';
-import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJobStatus, isWorktreeInUse, setJobDependencies, getJobDependencies, getDependentJobs, checkCircularDependency, addJobLog, getJobLogs, sanitizeResultSummaryValue } from '../models/job.js';
+import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJobStatus, isWorktreeInUse, setJobDependencies, getJobDependencies, getDependentJobs, checkCircularDependency, addJobLog, getJobLogs, sanitizeResultSummaryValue, touchJobUpdatedAt } from '../models/job.js';
 import { removeWorktree } from '../../worker/worktree.js';
 import { orchestratorEvents } from '../events.js';
 import { getDb } from '../db.js';
@@ -354,8 +354,13 @@ router.post('/:id/logs', (req, res, next) => {
       return res.status(404).json({ error: 'Job not found' });
     }
 
-    // Append log to result_summary
+    // Append log and touch updated_at
     addJobLog(id, body.stream, body.text);
+    try {
+      touchJobUpdatedAt(id);
+    } catch (error) {
+      console.warn(`Failed to update job timestamp for ${id}:`, error);
+    }
 
     // Emit SSE event
     orchestratorEvents.emit({
@@ -383,8 +388,8 @@ router.post('/:id/complete', (req, res, next) => {
     const existingDbLogs = getJobLogs(id);
     const logsToPersist: LogEntry[] = [];
 
-    // If no logs are in the new table yet, migrate any embedded legacy logs
-    if (existingDbLogs.length === 0 && existingJob.result_summary) {
+    // Migrate any embedded legacy logs (dedupe later against DB)
+    if (existingJob.result_summary) {
       logsToPersist.push(...extractLogsFromSummary(existingJob.result_summary));
     }
 

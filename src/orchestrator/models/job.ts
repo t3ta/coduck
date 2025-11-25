@@ -404,6 +404,16 @@ export const getJobLogs = (jobId: string): JobLog[] => {
   return rows;
 };
 
+export const touchJobUpdatedAt = (jobId: string): void => {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const stmt = db.prepare('UPDATE jobs SET updated_at = ? WHERE id = ?');
+  const result = stmt.run(now, jobId);
+  if (result.changes === 0) {
+    throw new Error(`Job ${jobId} not found`);
+  }
+};
+
 export const isWorktreeInUse = (worktreePath: string, excludeJobIds: string[] = []): boolean => {
   const db = getDb();
   const placeholders = excludeJobIds.map(() => '?').join(', ');
