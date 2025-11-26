@@ -31,5 +31,12 @@ export const startServer = async (): Promise<void> => {
   const server = createServer();
   const transport = new StdioServerTransport();
 
+  const closed = new Promise<void>((resolve, reject) => {
+    // Resolve when the transport closes, reject on transport-level errors
+    server.server.onclose = () => resolve();
+    server.server.onerror = (err) => reject(err);
+  });
+
   await server.connect(transport);
+  await closed;
 };
