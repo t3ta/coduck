@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "npm run build:backend && npm run build:ui",
+    "build:backend": "tsc",
+    "build:ui": "npm --prefix ui run build",
     "test": "tsx tests/run-tests.ts",
     "start": "npm run orchestrator & npm run worker",
     "orchestrator": "tsx src/orchestrator.ts",
