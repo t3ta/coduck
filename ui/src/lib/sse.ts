@@ -3,6 +3,7 @@ import type { Job } from './types';
 type SSEEvent =
   | { type: 'job_created'; data: Job }
   | { type: 'job_updated'; data: Job }
+  | { type: 'job_deleted'; data: { id: string } }
   | { type: 'worktree_changed' }
   | { type: 'log_appended'; data: { jobId: string; stream: 'stdout' | 'stderr'; text: string } };
 
@@ -30,6 +31,11 @@ class SSEClient {
       this.eventSource.addEventListener('job_updated', (e: MessageEvent) => {
         const data = JSON.parse(e.data);
         this.emit({ type: 'job_updated', data });
+      });
+
+      this.eventSource.addEventListener('job_deleted', (e: MessageEvent) => {
+        const data = JSON.parse(e.data);
+        this.emit({ type: 'job_deleted', data });
       });
 
       this.eventSource.addEventListener('worktree_changed', () => {

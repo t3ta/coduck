@@ -41,6 +41,8 @@ export const runMigrations = (): void => {
       worker_type TEXT NOT NULL,
       feature_id TEXT,
       feature_part TEXT,
+      push_mode TEXT DEFAULT 'always',
+      resume_requested INTEGER DEFAULT 0,
       status TEXT NOT NULL,
       spec_json TEXT NOT NULL,
       result_summary TEXT,
@@ -58,7 +60,8 @@ export const runMigrations = (): void => {
   const hasFeatureId = columns.some((column) => column.name === 'feature_id');
   const hasFeaturePart = columns.some((column) => column.name === 'feature_part');
   const hasPushMode = columns.some((column) => column.name === 'push_mode');
-  
+  const hasResumeRequested = columns.some((column) => column.name === 'resume_requested');
+
   if (!hasConversationId) {
     db.exec('ALTER TABLE jobs ADD COLUMN conversation_id TEXT');
   }
@@ -70,6 +73,9 @@ export const runMigrations = (): void => {
   }
   if (!hasPushMode) {
     db.exec("ALTER TABLE jobs ADD COLUMN push_mode TEXT DEFAULT 'always'");
+  }
+  if (!hasResumeRequested) {
+    db.exec('ALTER TABLE jobs ADD COLUMN resume_requested INTEGER DEFAULT 0');
   }
 
   db.exec('CREATE INDEX IF NOT EXISTS idx_jobs_feature_id ON jobs(feature_id)');

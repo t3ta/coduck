@@ -43,6 +43,12 @@ export async function deleteJob(id: string): Promise<Job> {
   return res.json();
 }
 
+export async function resumeJob(id: string): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/jobs/${id}/resume`, { method: 'POST' });
+  if (!res.ok) throw new Error(`Failed to resume job: ${res.statusText}`);
+  return res.json();
+}
+
 export async function listFeatures(): Promise<Feature[]> {
   const res = await fetch(`${API_BASE}/features`);
   if (!res.ok) throw new Error(`Failed to fetch features: ${res.statusText}`);

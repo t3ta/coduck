@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import type { Job } from '../shared/types.js';
 import { appConfig } from '../shared/config.js';
 import { createWorktree, WorktreeContext } from './worktree.js';
-import { executeCodex } from './executor.js';
+import { executeCodex, continueCodex } from './executor.js';
 
 const execFilePromise = promisify(execFile);
 
@@ -187,9 +187,19 @@ export class CodexWorker {
       const worktreePath = await this.resolveWorktreePath(job.worktree_path);
       summary.worktree_path = worktreePath;
 
-      worktreeContext = await this.createWorktreeImpl(repoPath, job.base_ref, job.branch_name, worktreePath);
+      const preserveWorktree = !!job.resume_requested;
+      worktreeContext = await this.createWorktreeImpl(repoPath, job.base_ref, job.branch_name, worktreePath, {
+        preserveChanges: preserveWorktree,
+      });
 
-      const execution = await this.executeCodexImpl(worktreeContext.path, job.spec_json, job.id);
+      // Check if this is a resume request (timed-out job being continued)
+      let execution;
+      if (job.resume_requested && job.conversation_id) {
+        console.log(`Job ${job.id}: Resuming timed-out session ${job.conversation_id}`);
+        execution = await continueCodex(worktreeContext.path, job.conversation_id, '続きを実行して', job.id);
+      } else {
+        execution = await this.executeCodexImpl(worktreeContext.path, job.spec_json, job.id);
+      }
       if (execution.sessionId) {
         sessionId = execution.sessionId;
       }

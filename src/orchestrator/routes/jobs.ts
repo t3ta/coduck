@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 
 import type { JobStatus, SpecJson } from '../../shared/types.js';
-import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJobStatus, isWorktreeInUse, setJobDependencies, getJobDependencies, getDependentJobs, checkCircularDependency, addJobLog, getJobLogs, sanitizeResultSummaryValue, touchJobUpdatedAt } from '../models/job.js';
+import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJobStatus, isWorktreeInUse, setJobDependencies, getJobDependencies, getDependentJobs, checkCircularDependency, addJobLog, getJobLogs, sanitizeResultSummaryValue, touchJobUpdatedAt, resumeJob } from '../models/job.js';
 import { removeWorktree } from '../../worker/worktree.js';
 import { orchestratorEvents } from '../events.js';
 import { getDb } from '../db.js';
@@ -88,10 +88,10 @@ const extractLogsFromSummary = (value: unknown): LogEntry[] => {
   for (const entry of maybeLogs) {
     if (!entry || typeof entry !== 'object') continue;
     const stream = (entry as Record<string, unknown>).stream === 'stderr' ? 'stderr' : 'stdout';
-    const text = typeof (entry as Record<string, unknown>).text === 'string' ? (entry as Record<string, unknown>).text : '';
+    const text = typeof (entry as Record<string, unknown>).text === 'string' ? (entry as Record<string, unknown>).text as string : '';
     if (text) {
       const timestamp = typeof (entry as Record<string, unknown>).timestamp === 'string'
-        ? (entry as Record<string, unknown>).timestamp
+        ? (entry as Record<string, unknown>).timestamp as string
         : undefined;
       logs.push({ stream, text, timestamp });
     }
@@ -294,6 +294,7 @@ router.delete('/:id', async (req, res, next) => {
     } else {
       console.log(`Worktree ${job.worktree_path} still in use by other jobs, skipping removal`);
     }
+    orchestratorEvents.emit({ type: 'job_deleted', data: { id: job.id } });
     res.status(200).json(stripLogsFromJob(job));
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('Cannot delete job')) {
@@ -443,6 +444,52 @@ router.post('/:id/complete', (req, res, next) => {
 
     orchestratorEvents.emit({ type: 'job_updated', data: stripLogsFromJob(job) });
     res.status(200).json(stripLogsFromJob(job));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/resume', (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const job = getJob(id);
+
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    // Check if job is resumable (failed + timed_out + has conversation_id)
+    let summary: { codex?: { timed_out?: boolean } } = {};
+    if (job.result_summary) {
+      try {
+        summary = JSON.parse(job.result_summary);
+      } catch {
+        // ignore parse error
+      }
+    }
+
+    if (job.status !== 'failed') {
+      return res.status(400).json({ error: `Job is not in failed status (current: ${job.status})` });
+    }
+
+    if (!summary?.codex?.timed_out) {
+      return res.status(400).json({ error: 'Job did not time out' });
+    }
+
+    if (!job.conversation_id) {
+      return res.status(400).json({ error: 'Job has no conversation_id to resume' });
+    }
+
+    // Set job back to pending with resume_requested flag
+    resumeJob(id);
+
+    const updatedJob = getJob(id);
+    if (!updatedJob) {
+      return res.status(404).json({ error: 'Job not found after resume' });
+    }
+
+    orchestratorEvents.emit({ type: 'job_updated', data: stripLogsFromJob(updatedJob) });
+    res.status(200).json({ success: true });
   } catch (error) {
     next(error);
   }

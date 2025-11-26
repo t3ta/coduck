@@ -43,7 +43,7 @@ export const appConfig: AppConfig = {
   orchestratorUrl,
   workerPollIntervalMs: parseNumber(process.env.WORKER_POLL_INTERVAL_MS, 5000),
   workerConcurrency: parseNumber(process.env.WORKER_CONCURRENCY, 3),
-  codexMcpTimeoutMs: parseNumber(process.env.CODEX_MCP_TIMEOUT_MS, 1800000),
+  codexMcpTimeoutMs: parseNumber(process.env.CODEX_MCP_TIMEOUT_MS, 3600000),
   codexReasoningSummary: process.env.CODEX_REASONING_SUMMARY || undefined,
   codexReasoningFormat: process.env.CODEX_REASONING_FORMAT || undefined,
 };

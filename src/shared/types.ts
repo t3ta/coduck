@@ -22,6 +22,7 @@ export interface Job {
   spec_json: SpecJson;
   result_summary: string | null;
   conversation_id: string | null;
+  resume_requested?: boolean;
   created_at: string;
   updated_at: string;
   depends_on?: string[]; // Job IDs this job depends on
