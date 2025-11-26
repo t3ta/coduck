@@ -13,6 +13,7 @@ type JobRow = {
   feature_id: string | null;
   feature_part: string | null;
   push_mode: string | null;
+  resume_requested: number | null;
   status: JobStatus;
   spec_json: string;
   result_summary: string | null;
@@ -41,6 +42,7 @@ const JOB_COLUMNS = [
   'feature_id',
   'feature_part',
   'push_mode',
+  'resume_requested',
   'status',
   'spec_json',
   'result_summary',
@@ -102,6 +104,7 @@ const deserializeJob = (row: JobRow): Job => {
     feature_id: row.feature_id,
     feature_part: row.feature_part,
     push_mode: (row.push_mode as 'always' | 'never') ?? 'always',
+    resume_requested: !!row.resume_requested,
     status: row.status,
     spec_json: JSON.parse(row.spec_json),
     result_summary: row.result_summary,
@@ -131,13 +134,14 @@ export const createJob = (job: CreateJobInput): Job => {
       feature_id,
       feature_part,
       push_mode,
+      resume_requested,
       status,
       spec_json,
       result_summary,
       conversation_id,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   insert.run(
@@ -150,6 +154,7 @@ export const createJob = (job: CreateJobInput): Job => {
     job.feature_id ?? null,
     job.feature_part ?? null,
     job.push_mode ?? 'always',
+    job.resume_requested ? 1 : 0,
     job.status,
     JSON.stringify(job.spec_json),
     job.result_summary ?? null,
@@ -161,6 +166,7 @@ export const createJob = (job: CreateJobInput): Job => {
   return {
     ...job,
     id,
+    resume_requested: job.resume_requested ?? false,
     created_at: now,
     updated_at: now,
   };

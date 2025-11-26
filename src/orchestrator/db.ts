@@ -41,6 +41,8 @@ export const runMigrations = (): void => {
       worker_type TEXT NOT NULL,
       feature_id TEXT,
       feature_part TEXT,
+      push_mode TEXT DEFAULT 'always',
+      resume_requested INTEGER DEFAULT 0,
       status TEXT NOT NULL,
       spec_json TEXT NOT NULL,
       result_summary TEXT,
