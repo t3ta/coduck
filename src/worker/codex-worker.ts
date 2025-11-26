@@ -64,6 +64,7 @@ export class CodexWorker {
   private readonly concurrency: number;
   private readonly worktreeBaseDir: string;
   private readonly repoCacheDir: string;
+  private readonly gitCommand: string;
   private readonly fetchImpl: typeof fetch;
   private readonly createWorktreeImpl: typeof createWorktree;
   private readonly executeCodexImpl: typeof executeCodex;
@@ -76,6 +77,7 @@ export class CodexWorker {
     this.concurrency = appConfig.workerConcurrency;
     this.worktreeBaseDir = path.resolve(appConfig.worktreeBaseDir);
     this.repoCacheDir = path.join(this.worktreeBaseDir, '_repos');
+    this.gitCommand = appConfig.gitPath;
     this.fetchImpl = deps.fetchImpl ?? fetch;
     this.createWorktreeImpl = deps.createWorktree ?? createWorktree;
     this.executeCodexImpl = deps.executeCodex ?? executeCodex;
@@ -321,7 +323,7 @@ export class CodexWorker {
   private async performClone(repoLocation: string, repoPath: string): Promise<string> {
     await fs.mkdir(this.repoCacheDir, { recursive: true });
     console.log(`Cloning repository ${repoLocation} into ${repoPath}`);
-    await this.runCommand('git', ['clone', repoLocation, repoPath], { cwd: this.repoCacheDir });
+    await this.runGit(['clone', repoLocation, repoPath], this.repoCacheDir);
     return repoPath;
   }
 
@@ -394,7 +396,7 @@ export class CodexWorker {
   }
 
   private async runGit(args: string[], cwd: string): Promise<CommandResult> {
-    return this.runCommand('git', args, { cwd });
+    return this.runCommand(this.gitCommand, args, { cwd });
   }
 
   private async runCommand(
@@ -412,6 +414,15 @@ export class CodexWorker {
       const { stdout, stderr } = await execFileAsync(command, args, finalOptions);
       return { stdout, stderr };
     } catch (error) {
+      const nodeError = error as NodeJS.ErrnoException;
+      if (nodeError?.code === 'ENOENT') {
+        const hints = [`Command not found: ${command}`];
+        if (command === this.gitCommand) {
+          hints.push('Install git or set GIT_PATH to the git executable.');
+        }
+        throw new Error(hints.join('. '), { cause: error instanceof Error ? error : undefined });
+      }
+
       const stderr = toErrorOutput((error as { stderr?: string | Buffer }).stderr);
       const stdout = toErrorOutput((error as { stdout?: string | Buffer }).stdout);
       const messageParts = [`${command} ${args.join(' ')}`];

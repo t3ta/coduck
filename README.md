@@ -62,10 +62,12 @@ ORCHESTRATOR_URL=http://localhost:3000
 WORKER_POLL_INTERVAL_MS=5000
 WORKTREE_BASE_DIR=./worktrees
 CODEX_CLI_PATH=codex
+GIT_PATH=git
 WORKER_CONCURRENCY=3
 ```
 
 - `WORKER_CONCURRENCY`: Number of worker processes running in parallel (default 3).
+- `GIT_PATH`: Path to the git executable if it's not available on `PATH` (default `git`).
 
 ## Usage
 

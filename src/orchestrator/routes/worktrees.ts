@@ -19,6 +19,7 @@ import { orchestratorEvents } from '../events.js';
 
 const execFileAsync = promisify(execFile);
 const WORKTREE_BASE_DIR = path.resolve(appConfig.worktreeBaseDir);
+const GIT_COMMAND = appConfig.gitPath;
 const PROTECTED_STATUSES = new Set<JobStatus>(['running', 'awaiting_input']);
 
 interface GitWorktreeEntry {
@@ -31,11 +32,17 @@ interface GitWorktreeEntry {
 
 const runGit = async (args: string[]): Promise<string> => {
   try {
-    const { stdout } = await execFileAsync('git', args, { cwd: process.cwd(), encoding: 'utf8' });
+    const { stdout } = await execFileAsync(GIT_COMMAND, args, { cwd: process.cwd(), encoding: 'utf8' });
     return stdout;
   } catch (error) {
+    const nodeError = error as NodeJS.ErrnoException;
+    if (nodeError?.code === 'ENOENT') {
+      throw new Error(`Git executable not found (configured path: ${GIT_COMMAND}). Install git or set GIT_PATH.`, {
+        cause: error instanceof Error ? error : undefined,
+      });
+    }
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`git ${args.join(' ')} failed: ${message}`);
+    throw new Error(`${GIT_COMMAND} ${args.join(' ')} failed: ${message}`);
   }
 };
 

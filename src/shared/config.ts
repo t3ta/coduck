@@ -12,6 +12,7 @@ dotenv.config({ debug: false, quiet: true });
 export interface AppConfig {
   worktreeBaseDir: string;
   codexCliPath: string;
+  gitPath: string;
   orchestratorPort: number;
   orchestratorUrl: string;
   workerPollIntervalMs: number;
@@ -35,10 +36,12 @@ const parsePort = (value: string | undefined, fallback: number): number => {
 
 const orchestratorPort = parsePort(process.env.ORCHESTRATOR_PORT, 3000);
 const orchestratorUrl = process.env.ORCHESTRATOR_URL ?? `http://localhost:${orchestratorPort}`;
+const gitPath = process.env.GIT_PATH?.trim() || 'git';
 
 export const appConfig: AppConfig = {
   worktreeBaseDir: process.env.WORKTREE_BASE_DIR ?? './worktrees',
   codexCliPath: process.env.CODEX_CLI_PATH ?? 'codex',
+  gitPath,
   orchestratorPort,
   orchestratorUrl,
   workerPollIntervalMs: parseNumber(process.env.WORKER_POLL_INTERVAL_MS, 5000),
