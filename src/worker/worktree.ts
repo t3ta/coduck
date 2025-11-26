@@ -4,22 +4,33 @@ import { execFile } from 'node:child_process';
 import type { ExecFileOptions } from 'node:child_process';
 import { promisify } from 'node:util';
 
+import { appConfig } from '../shared/config.js';
+
 const execFilePromise = promisify(execFile);
 
 type ExecResult = { stdout: string; stderr: string };
 
 type ExecOptions = ExecFileOptions;
 
+const GIT_COMMAND = appConfig.gitPath;
+
 const execGit = (args: string[], options: ExecOptions = {}): Promise<ExecResult> => {
-  return execFilePromise('git', args, { ...options, encoding: 'utf8' }) as Promise<ExecResult>;
+  return execFilePromise(GIT_COMMAND, args, { ...options, encoding: 'utf8' }) as Promise<ExecResult>;
 };
 
 const runGit = async (args: string[], options: ExecOptions = {}): Promise<ExecResult> => {
   try {
     return await execGit(args, options);
   } catch (error) {
+    const nodeError = error as NodeJS.ErrnoException;
+    if (nodeError?.code === 'ENOENT') {
+      throw new Error(`Git executable not found (configured path: ${GIT_COMMAND}). Install git or set GIT_PATH.`, {
+        cause: error instanceof Error ? error : undefined,
+      });
+    }
+
     const stderr = toErrorOutput((error as { stderr?: string | Buffer }).stderr);
-    const messageParts = [`git ${args.join(' ')} failed`];
+    const messageParts = [`${GIT_COMMAND} ${args.join(' ')} failed`];
     if (stderr.trim()) {
       messageParts.push(stderr.trim());
     } else if (error instanceof Error) {
