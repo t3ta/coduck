@@ -187,7 +187,10 @@ export class CodexWorker {
       const worktreePath = await this.resolveWorktreePath(job.worktree_path);
       summary.worktree_path = worktreePath;
 
-      worktreeContext = await this.createWorktreeImpl(repoPath, job.base_ref, job.branch_name, worktreePath);
+      const preserveWorktree = !!job.resume_requested;
+      worktreeContext = await this.createWorktreeImpl(repoPath, job.base_ref, job.branch_name, worktreePath, {
+        preserveChanges: preserveWorktree,
+      });
 
       // Check if this is a resume request (timed-out job being continued)
       let execution;

@@ -53,14 +53,24 @@ export interface WorktreeContext {
   cleanup: () => Promise<void>;
 }
 
+export interface CreateWorktreeOptions {
+  /**
+   * When true, reuse an existing worktree without resetting/cleaning it.
+   * This is used for resuming timed-out Codex sessions to keep prior changes intact.
+   */
+  preserveChanges?: boolean;
+}
+
 export async function createWorktree(
   repoPath: string,
   baseRef: string,
   branchName: string,
-  worktreePath: string
+  worktreePath: string,
+  options: CreateWorktreeOptions = {}
 ): Promise<WorktreeContext> {
   const resolvedRepoPath = path.resolve(repoPath);
   const resolvedWorktreePath = path.resolve(worktreePath);
+  const preserveChanges = options.preserveChanges ?? false;
 
   const repoExists = await pathExists(resolvedRepoPath);
   if (!repoExists) {
@@ -77,9 +87,13 @@ export async function createWorktree(
     // Reuse existing worktree
     console.log(`Reusing existing worktree at ${resolvedWorktreePath}`);
 
-    // Clean up any uncommitted changes or untracked files from previous jobs
-    await runGit(['reset', '--hard'], { cwd: resolvedWorktreePath });
-    await runGit(['clean', '-fd'], { cwd: resolvedWorktreePath });
+    if (preserveChanges) {
+      console.log(`Preserving existing worktree state for resume; skipping reset/clean.`);
+    } else {
+      // Clean up any uncommitted changes or untracked files from previous jobs
+      await runGit(['reset', '--hard'], { cwd: resolvedWorktreePath });
+      await runGit(['clean', '-fd'], { cwd: resolvedWorktreePath });
+    }
 
     await runGit(['fetch', '--all'], { cwd: resolvedWorktreePath });
     await runGit(['checkout', branchName], { cwd: resolvedWorktreePath });
@@ -89,11 +103,13 @@ export async function createWorktree(
       .then(() => true)
       .catch(() => false);
 
-    if (hasUpstream) {
+    if (hasUpstream && !preserveChanges) {
       await runGit(['pull', '--rebase'], { cwd: resolvedWorktreePath });
       console.log(`Pulled latest changes from upstream`);
-    } else {
+    } else if (!hasUpstream) {
       console.log(`Branch has no upstream, skipping pull`);
+    } else {
+      console.log(`Preserving worktree; skipping pull to keep local changes intact`);
     }
   } else {
     // Create new worktree
