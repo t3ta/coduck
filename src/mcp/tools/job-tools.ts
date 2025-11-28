@@ -218,7 +218,8 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
 
     const job = await orchestratorClient.deleteJob(jobId);
     // Only remove worktree if job used worktree mode
-    if (job.worktree_path && job.worktree_path.trim() !== '') {
+    // Double-check: both use_worktree flag and non-empty worktree_path
+    if (job.use_worktree !== false && job.worktree_path && job.worktree_path.trim() !== '') {
       try {
         await removeWorktree(job.worktree_path);
       } catch (error) {
@@ -239,8 +240,10 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
 
     const result = await orchestratorClient.cleanupJobs(sanitizedOptions);
     const jobList = result.jobs.length ? result.jobs.map((job) => formatJob(job)).join('\n\n') : 'No jobs deleted.';
-    // Filter out empty worktree paths (from no-worktree mode jobs)
-    const worktreePaths = [...new Set(result.jobs.map((job) => job.worktree_path).filter((path) => path && path.trim() !== ''))];
+    // Filter out no-worktree mode jobs: check both use_worktree flag and non-empty worktree_path
+    const worktreePaths = [...new Set(result.jobs
+      .filter((job) => job.use_worktree !== false && job.worktree_path && job.worktree_path.trim() !== '')
+      .map((job) => job.worktree_path))];
     for (const worktreePath of worktreePaths) {
       try {
         await removeWorktree(worktreePath);

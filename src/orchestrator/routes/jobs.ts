@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import path from 'node:path';
 
 import type { JobStatus, SpecJson } from '../../shared/types.js';
 import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJobStatus, isWorktreeInUse, setJobDependencies, getJobDependencies, getDependentJobs, checkCircularDependency, addJobLog, getJobLogs, sanitizeResultSummaryValue, touchJobUpdatedAt, resumeJob } from '../models/job.js';
@@ -135,7 +136,7 @@ router.post('/', (req, res, next) => {
 
       // worktree_path can be empty for no-worktree mode (working directory is in repo_url)
       // If provided, it must be absolute
-      if (payload.worktree_path && payload.worktree_path.trim() !== '' && !require('node:path').isAbsolute(payload.worktree_path)) {
+      if (payload.worktree_path && payload.worktree_path.trim() !== '' && !path.isAbsolute(payload.worktree_path)) {
         return res.status(400).json({
           error: "worktree_path must be absolute when use_worktree=false"
         });
@@ -299,9 +300,9 @@ router.delete('/:id', async (req, res, next) => {
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
     }
-    // Only remove worktree if no other jobs reference it
-    // Only remove worktree if job used worktree mode (worktree_path is not empty)
-    if (job.worktree_path && job.worktree_path.trim() !== '') {
+    // Only remove worktree if job used worktree mode
+    // Double-check: both use_worktree flag and non-empty worktree_path
+    if (job.use_worktree !== false && job.worktree_path && job.worktree_path.trim() !== '') {
       const worktreeStillInUse = isWorktreeInUse(job.worktree_path, [job.id]);
       if (!worktreeStillInUse) {
         try {
@@ -344,8 +345,10 @@ router.post('/cleanup', async (req, res, next) => {
     const payload = cleanupJobsSchema.parse(req.body ?? {});
     const result = deleteJobs(payload);
     const deletedJobIds = result.deleted.map((job) => job.id);
-    // Filter out empty worktree paths (from no-worktree mode jobs)
-    const worktreePaths = [...new Set(result.deleted.map((job) => job.worktree_path).filter((path) => path && path.trim() !== ''))];
+    // Filter out no-worktree mode jobs: check both use_worktree flag and non-empty worktree_path
+    const worktreePaths = [...new Set(result.deleted
+      .filter((job) => job.use_worktree !== false && job.worktree_path && job.worktree_path.trim() !== '')
+      .map((job) => job.worktree_path))];
     for (const worktreePath of worktreePaths) {
       // Only remove worktree if no other jobs (outside of deleted set) reference it
       const worktreeStillInUse = isWorktreeInUse(worktreePath, deletedJobIds);
