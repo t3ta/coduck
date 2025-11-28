@@ -199,7 +199,9 @@ export class CodexWorker {
         });
         workingDirectory = worktreeContext.path;
       } else {
-        // No-worktree mode uses repo_url as the absolute working directory (recorded for debugging/result summaries)
+        // No-worktree mode: repo_url contains the absolute working directory path.
+        // Note: worktree_path is kept empty to prevent directory deletion.
+        // Use working_directory in ResultSummary to record the actual path.
         workingDirectory = path.resolve(job.repo_url);
         summary.working_directory = workingDirectory;
 
@@ -271,7 +273,6 @@ export class CodexWorker {
       // Run tests (common for both modes)
       const testsPassed = await this.runTests(workingDirectory);
       summary.tests_passed = testsPassed;
-      summary.tests = testsPassed === undefined ? 'skipped' : testsPassed ? 'passed' : 'failed';
 
       if (testsPassed === false) {
         throw new Error('Tests failed');

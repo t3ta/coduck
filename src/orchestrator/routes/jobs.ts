@@ -146,15 +146,14 @@ router.post('/', (req, res, next) => {
       // Validate that repo_url is an absolute path
       if (!path.isAbsolute(payload.repo_url)) {
         return res.status(400).json({
-          error: "repo_url must be an absolute path when use_worktree=false"
+          error: 'repo_url must be an absolute path when use_worktree=false',
         });
       }
 
-      // worktree_path can be empty for no-worktree mode (working directory is in repo_url)
-      // If provided, it must be absolute
-      if (payload.worktree_path && payload.worktree_path.trim() !== '' && !path.isAbsolute(payload.worktree_path)) {
+      // worktree_path must remain empty for no-worktree mode (working directory is in repo_url)
+      if (payload.worktree_path && payload.worktree_path.trim() !== '') {
         return res.status(400).json({
-          error: "worktree_path must be absolute when use_worktree=false"
+          error: 'worktree_path must be empty when use_worktree=false',
         });
       }
     }

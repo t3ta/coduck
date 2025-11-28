@@ -58,7 +58,7 @@ describe('CodexWorker handleJob', () => {
     expect(codexSummary.success).toBe(true);
     expect(codexSummary.awaiting_input).toBe(false);
     expect(codexSummary.conversation_id).toBe('conv-123');
-    expect(summary.tests).toBe('passed');
+    expect(summary.tests_passed).toBe(true);
     expect(summary.commit_hash).toBe('abc123');
     expect(summary.pushed).toBe(true);
     expect(cleanup.mock.calls.length).toBe(1);
