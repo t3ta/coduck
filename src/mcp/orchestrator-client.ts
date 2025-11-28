@@ -140,7 +140,7 @@ export class OrchestratorClient {
       const cwd = process.cwd();
       repoUrl = cwd;
       worktreePath = ''; // Empty string to prevent worktree deletion
-      branchName = 'temp'; // Dummy value for DB constraint
+      branchName = `no-worktree-${randomUUID().slice(0, 8)}`; // Unique branch name for no-worktree jobs
       console.log(`Using no-worktree mode with working directory: ${cwd}`);
     } else {
       // Determine branch_name: explicit > feature_id > auto-generated

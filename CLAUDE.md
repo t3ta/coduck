@@ -209,9 +209,11 @@ enqueue_codex_job({
 ```
 
 **注意**:
-- `repo_url` と `worktree_path` は自動的に現在の作業ディレクトリ（`process.cwd()`）に設定されます
+- `repo_url` は自動的に現在の作業ディレクトリ（`process.cwd()`）に設定されます
+- `worktree_path` は空文字列に設定されます（ワークツリー削除を防止するため）
 - `push_mode` は自動的に `'never'` に設定されます
-- `branch_name` と `base_ref` は無視されます（Git操作がないため）
+- `branch_name` は自動生成されます（`no-worktree-<uuid>`形式）
+- `base_ref` は無視されます（Git操作がないため）
 
 ### 制約
 

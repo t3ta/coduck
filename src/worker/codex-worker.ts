@@ -199,7 +199,9 @@ export class CodexWorker {
         });
         workingDirectory = worktreeContext.path;
       } else {
-        // No-worktree mode: use existing directory (repo_url contains the working directory)
+        // No-worktree mode: use existing directory
+        // In no-worktree mode, repo_url contains the absolute path to the working directory
+        // (In worktree mode, repo_url contains the Git repository path)
         workingDirectory = path.resolve(job.repo_url);
         summary.working_directory = workingDirectory;
 
