@@ -299,15 +299,18 @@ router.delete('/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Job not found' });
     }
     // Only remove worktree if no other jobs reference it
-    const worktreeStillInUse = isWorktreeInUse(job.worktree_path, [job.id]);
-    if (!worktreeStillInUse) {
-      try {
-        await removeWorktree(job.worktree_path);
-      } catch (error) {
-        console.warn(`Failed to remove worktree ${job.worktree_path}:`, error);
+    // Only remove worktree if job used worktree mode (worktree_path is not empty)
+    if (job.worktree_path && job.worktree_path.trim() !== '') {
+      const worktreeStillInUse = isWorktreeInUse(job.worktree_path, [job.id]);
+      if (!worktreeStillInUse) {
+        try {
+          await removeWorktree(job.worktree_path);
+        } catch (error) {
+          console.warn(`Failed to remove worktree ${job.worktree_path}:`, error);
+        }
+      } else {
+        console.log(`Worktree ${job.worktree_path} still in use by other jobs, skipping removal`);
       }
-    } else {
-      console.log(`Worktree ${job.worktree_path} still in use by other jobs, skipping removal`);
     }
     orchestratorEvents.emit({ type: 'job_deleted', data: { id: job.id } });
     res.status(200).json(stripLogsFromJob(job));
@@ -340,7 +343,8 @@ router.post('/cleanup', async (req, res, next) => {
     const payload = cleanupJobsSchema.parse(req.body ?? {});
     const result = deleteJobs(payload);
     const deletedJobIds = result.deleted.map((job) => job.id);
-    const worktreePaths = [...new Set(result.deleted.map((job) => job.worktree_path))];
+    // Filter out empty worktree paths (from no-worktree mode jobs)
+    const worktreePaths = [...new Set(result.deleted.map((job) => job.worktree_path).filter((path) => path && path.trim() !== ''))];
     for (const worktreePath of worktreePaths) {
       // Only remove worktree if no other jobs (outside of deleted set) reference it
       const worktreeStillInUse = isWorktreeInUse(worktreePath, deletedJobIds);

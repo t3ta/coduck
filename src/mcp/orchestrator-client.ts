@@ -139,7 +139,7 @@ export class OrchestratorClient {
     if (args.use_worktree === false) {
       const cwd = process.cwd();
       repoUrl = cwd;
-      worktreePath = cwd;
+      worktreePath = ''; // Empty string to prevent worktree deletion
       branchName = 'temp'; // Dummy value for DB constraint
       console.log(`Using no-worktree mode with working directory: ${cwd}`);
     } else {

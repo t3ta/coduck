@@ -199,8 +199,8 @@ export class CodexWorker {
         });
         workingDirectory = worktreeContext.path;
       } else {
-        // No-worktree mode: use existing directory
-        workingDirectory = path.resolve(job.worktree_path);
+        // No-worktree mode: use existing directory (repo_url contains the working directory)
+        workingDirectory = path.resolve(job.repo_url);
         summary.working_directory = workingDirectory;
 
         // Verify working directory exists
