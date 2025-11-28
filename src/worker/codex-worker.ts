@@ -176,7 +176,8 @@ export class CodexWorker {
       branch: job.branch_name,
       base_ref: job.base_ref,
     };
-    // worktree_path tracks managed worktrees; working_directory is recorded for no-worktree runs to avoid ambiguity.
+    // worktree_path is only set when the worker owns a managed worktree (safe to clean up).
+    // working_directory captures the user-provided path for no-worktree runs so we never delete the wrong directory.
     const useWorktreeMode = job.use_worktree !== false;
 
     let worktreeContext: WorktreeContext | null = null;
@@ -202,14 +203,14 @@ export class CodexWorker {
         // No-worktree mode: repo_url contains the absolute working directory path.
         // Note: worktree_path is kept empty to prevent directory deletion.
         // Use working_directory in ResultSummary to record the actual path.
-        workingDirectory = path.resolve(job.repo_url);
+        workingDirectory = job.repo_url;
         summary.working_directory = workingDirectory;
 
         // Verify working directory exists
         try {
           await fs.access(workingDirectory);
-        } catch {
-          throw new Error(`Working directory does not exist: ${workingDirectory}`);
+        } catch (err) {
+          throw new Error(`Working directory does not exist or is not accessible: ${workingDirectory}. ${err}`);
         }
 
         console.log(`Job ${job.id}: Using existing directory (no worktree): ${workingDirectory}`);

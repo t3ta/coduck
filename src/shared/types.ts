@@ -35,6 +35,10 @@ export interface JobDependency {
 }
 
 export interface ResultSummary extends Record<string, unknown> {
+  jobId?: string;
+  repo_url?: string;
+  branch?: string;
+  base_ref?: string;
   git_skipped?: boolean;
   working_directory?: string;
   worktree_path?: string;
@@ -42,6 +46,25 @@ export interface ResultSummary extends Record<string, unknown> {
   tests_passed?: boolean;
   message?: string;
   error?: string;
+  cleanup_error?: string;
+  pushed?: boolean;
+  codex?: {
+    conversation_id?: string | null;
+    conversationId?: string;
+    success?: boolean;
+    awaiting_input?: boolean;
+    duration_ms?: number;
+    timed_out?: boolean;
+  };
+  conversation_id?: string | null;
+  continuations?: Array<{
+    prompt?: string;
+    response?: string;
+    user_prompt?: string;
+    conversation_id?: string;
+    at?: string;
+  }>;
+  last_continuation?: Record<string, unknown>;
 }
 
 export type WorktreeState = 'orphaned' | 'in_use' | 'protected' | 'locked' | 'unmanaged';

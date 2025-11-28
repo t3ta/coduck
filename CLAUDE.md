@@ -118,9 +118,10 @@ Claude Code → MCP Tool → Orchestrator API → SQLite
 
 ### ワークツリーの基本
 
-- デフォルトディレクトリ: `./worktrees/`
+- デフォルトディレクトリ: `./worktrees/`（`WORKTREE_BASE_DIR`で変更可）
+- `worktree_path` は branch 名を `-` 置換したディレクトリ名で上記ディレクトリ配下に絶対パス生成。no-worktreeジョブは空文字を送って worktree 削除を防ぐ
 - 同じ`branch_name`を持つJobは同じworktreeを共有
-- ワークツリーは手動削除が必要（自動クリーンアップなし）
+- 成功時かつ`push_mode!=='never'`の場合は自動クリーンアップ。`push_mode='never'`または失敗時は調査のために保持
 - 会話継続時は既存ワークツリーを再利用してコンテキストを保持
 - `repo_url` はローカルリポジトリの絶対パスを前提（例: `/home/user/workspace/my-app`）。同一マシン内でworktreeとローカルリポジトリが親和的に扱われ、ネットワーク経由のcloneやpushに依存しない
 
@@ -209,23 +210,29 @@ enqueue_codex_job({
 ```
 
 **注意**:
-- `repo_url` は自動的に現在の作業ディレクトリ（`process.cwd()`）に設定されます
-- `worktree_path` は空文字列に設定されます（ワークツリー削除を防止するため）
-- `push_mode` は自動的に `'never'` に設定されます
-- `branch_name` は自動生成されます（`no-worktree-<uuid>`形式）
-- `base_ref` は無視されます（Git操作がないため）
+- `repo_url` は現在の作業ディレクトリの絶対パスに自動設定（ユーザー指定時も絶対パス必須）
+- `worktree_path` は常に空文字列（worker がクリーンアップ対象として扱わないため）
+- `working_directory` は result_summary に記録され、実行パスを明示
+- `push_mode` は強制的に `'never'`
+- `branch_name` は `no-worktree-<uuid>`形式で自動生成（Git操作はしないがメタデータとして保存）
+- `base_ref` はメタデータのみで、Git操作には使われません
 
 ### 制約
 
 - Git操作（コミット、プッシュ）は実行されません
 - テストは通常通り実行されます（`package.json` の `test` スクリプトがあれば）
-- 作業ディレクトリの変更は直接適用されます（ワークツリーの分離なし）
+- 作業ディレクトリの変更は直接適用されます（ワークツリーの分離なし）。worker/cleanupはいずれもこのディレクトリを削除しません（`use_worktree=false` + 空の`worktree_path`で防御）
+- コミットやpushは利用者が手動で行う必要があります
 
 ### バリデーションとメタデータ
 
-- `use_worktree=false` の場合、`repo_url` は絶対パス必須（相対パスは400）。CLI/Toolの自動設定はカレントディレクトリの絶対パスになります。
-- `use_worktree=true` の場合は `worktree_path` が必須（空文字不可）。no-worktreeモードでは空文字を渡してワークツリー削除を防止します。
-- `result_summary` はワークツリー利用時に `worktree_path` を、no-worktreeモードでは `working_directory` を記録します（ディレクトリ名の衝突を避けるため）。
+- `use_worktree=false` の場合、`repo_url` は絶対パス必須（相対パスは400）。CLI/Toolの自動設定は `process.cwd()` の絶対パス。
+- `use_worktree=true` の場合は `worktree_path` が必須（空文字不可）。オーケストレーターで `WORKTREE_BASE_DIR` 配下の絶対パスに解決されます。
+- プロパティ名の使い分け:
+  - `worktree_path`: workerが管理するGitワークツリーのパス。クリーンアップ対象。
+  - `working_directory`: no-worktree実行時の実ディレクトリ。削除/クリーンアップ対象外にするため別名で記録。
+  - `conversation_id`: CodexセッションID。`result_summary.codex.conversation_id` とジョブの `conversation_id` の両方で保持（互換性のため）。
+- `result_summary` は上記プロパティを保存してディレクトリ衝突や誤削除を避けます。
 - ジョブ削除/クリーンアップ時は `use_worktree` フラグと `worktree_path` を確認し、no-worktreeジョブの作業ディレクトリを削除しないよう防御しています。
 
 ### 使用例
