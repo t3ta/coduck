@@ -34,14 +34,15 @@ const createJobSchema = z.object({
   use_worktree: z.boolean().optional(),
   depends_on: z.array(z.string().uuid()).optional(),
 }).refine((data) => {
-  if (data.use_worktree !== false) {
+  // use_worktree defaults to true when undefined for backward compatibility
+  if (data.use_worktree === undefined || data.use_worktree === true) {
     return data.worktree_path.length > 0;
   }
   return true;
 }, {
-  message: 'worktree_path must be non-empty when use_worktree=true',
+  message: 'worktree_path is required when use_worktree is not false',
   path: ['worktree_path'],
-});;
+});
 
 const listJobsQuerySchema = z.object({
   status: jobStatusEnum.optional(),
@@ -151,12 +152,6 @@ router.post('/', (req, res, next) => {
         });
       }
 
-      if (trimmedWorktreePath && trimmedWorktreePath !== '' && !path.isAbsolute(trimmedWorktreePath)) {
-        return res.status(400).json({
-          error: 'worktree_path must be absolute when use_worktree=false',
-        });
-      }
-
       // worktree_path must remain empty for no-worktree mode (working directory is in repo_url)
       if (trimmedWorktreePath && trimmedWorktreePath !== '') {
         return res.status(400).json({
@@ -164,6 +159,9 @@ router.post('/', (req, res, next) => {
         });
       }
     }
+
+    // Use trimmed worktree_path consistently
+    payload.worktree_path = trimmedWorktreePath ?? '';
 
     // Validate dependencies exist and are not failed/cancelled
     if (payload.depends_on && payload.depends_on.length > 0) {

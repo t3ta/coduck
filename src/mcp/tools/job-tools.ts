@@ -30,7 +30,7 @@ const enqueueCodexJobSchema = z.object({
   push_mode: z.enum(['always', 'never']).optional(),
   use_worktree: z.boolean().optional().default(true),
   depends_on: z.array(z.string().uuid('Each dependency must be a valid job UUID.')).optional().describe('Job IDs that this job depends on (must complete before this job can start)'),
-});;
+});
 
 const listJobsSchema = z.object({
   status: z.enum(JOB_STATUSES).optional(),
