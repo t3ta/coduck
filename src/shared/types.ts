@@ -39,6 +39,7 @@ export interface ResultSummary extends Record<string, unknown> {
   repo_url?: string;
   branch?: string;
   base_ref?: string;
+
   git_skipped?: boolean;
   working_directory?: string;
   worktree_path?: string;
@@ -48,9 +49,10 @@ export interface ResultSummary extends Record<string, unknown> {
   error?: string;
   cleanup_error?: string;
   pushed?: boolean;
+
   codex?: {
-    conversation_id?: string | null;
     conversationId?: string;
+    conversation_id?: string | null;
     success?: boolean;
     awaiting_input?: boolean;
     duration_ms?: number;

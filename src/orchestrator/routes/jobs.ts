@@ -136,6 +136,7 @@ const router = Router();
 router.post('/', (req, res, next) => {
   try {
     const payload = createJobSchema.parse(req.body);
+    const trimmedWorktreePath = payload.worktree_path?.trim();
 
     // Validate and auto-configure no-worktree mode
     if (payload.use_worktree === false) {
@@ -150,8 +151,14 @@ router.post('/', (req, res, next) => {
         });
       }
 
+      if (trimmedWorktreePath && trimmedWorktreePath !== '' && !path.isAbsolute(trimmedWorktreePath)) {
+        return res.status(400).json({
+          error: 'worktree_path must be absolute when use_worktree=false',
+        });
+      }
+
       // worktree_path must remain empty for no-worktree mode (working directory is in repo_url)
-      if (payload.worktree_path && payload.worktree_path.trim() !== '') {
+      if (trimmedWorktreePath && trimmedWorktreePath !== '') {
         return res.status(400).json({
           error: 'worktree_path must be empty when use_worktree=false',
         });

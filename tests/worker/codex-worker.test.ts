@@ -1,3 +1,7 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
 import { describe, expect, it, jest } from '../utils/jest-lite.js';
 import type { Job } from '../../src/shared/types.ts';
 import { CodexWorker } from '../../src/worker/codex-worker.ts';
@@ -135,6 +139,40 @@ describe('CodexWorker handleJob', () => {
     expect(codexSummary.conversation_id).toBe('conv-await');
     expect(summary.message).toBe('Codex is awaiting additional input before proceeding.');
     expect(cleanup.mock.calls.length).toBe(0);
+  });
+
+  it('should not delete working directory in no-worktree mode', async () => {
+    const workingDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-worker-noworktree-'));
+    const createWorktree = jest.fn(() => {
+      throw new Error('createWorktree should not be called in no-worktree mode');
+    });
+    const executeCodex = jest.fn().mockResolvedValue({ success: true, sessionId: 'conv-noworktree' });
+    const completeJob = jest.fn().mockResolvedValue(undefined);
+
+    const worker = new CodexWorker({ fetchImpl: jest.fn(), createWorktree, executeCodex });
+
+    (worker as any).runTests = jest.fn().mockResolvedValue(true);
+    (worker as any).completeJob = completeJob;
+
+    try {
+      await (worker as any).handleJob(createJob({
+        use_worktree: false,
+        repo_url: workingDir,
+        worktree_path: '',
+        push_mode: 'never',
+      }));
+
+      await fs.access(workingDir);
+      expect(createWorktree.mock.calls.length).toBe(0);
+      expect(executeCodex.mock.calls[0][0]).toBe(workingDir);
+      expect(completeJob.mock.calls.length).toBe(1);
+      const [, status, summary] = completeJob.mock.calls[0];
+      expect(status).toBe('done');
+      expect(summary.working_directory).toBe(workingDir);
+      expect(summary.worktree_path).toBe(undefined);
+    } finally {
+      await fs.rm(workingDir, { recursive: true, force: true });
+    }
   });
 
   describe('handleJob with push_mode', () => {

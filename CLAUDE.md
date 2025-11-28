@@ -215,7 +215,7 @@ enqueue_codex_job({
 - `working_directory` は result_summary に記録され、実行パスを明示
 - `push_mode` は強制的に `'never'`
 - `branch_name` は `no-worktree-<uuid>`形式で自動生成（Git操作はしないがメタデータとして保存）
-- `base_ref` はメタデータのみで、Git操作には使われません
+- `base_ref` は使用されません（no-worktreeモードではGitブランチ操作を行わないため、baseブランチからの分岐が発生しません）
 
 ### 制約
 

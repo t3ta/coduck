@@ -210,7 +210,9 @@ export class CodexWorker {
         try {
           await fs.access(workingDirectory);
         } catch (err) {
-          throw new Error(`Working directory does not exist or is not accessible: ${workingDirectory}. ${err}`);
+          throw new Error(
+            `Working directory does not exist or is not accessible: ${workingDirectory}. Original error: ${err instanceof Error ? err.message : String(err)}`
+          );
         }
 
         console.log(`Job ${job.id}: Using existing directory (no worktree): ${workingDirectory}`);
