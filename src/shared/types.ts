@@ -38,6 +38,10 @@ export interface ResultSummary extends Record<string, unknown> {
   git_skipped?: boolean;
   working_directory?: string;
   worktree_path?: string;
+  commit_hash?: string | null;
+  tests_passed?: boolean;
+  message?: string;
+  error?: string;
 }
 
 export type WorktreeState = 'orphaned' | 'in_use' | 'protected' | 'locked' | 'unmanaged';

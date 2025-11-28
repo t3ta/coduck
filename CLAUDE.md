@@ -221,6 +221,13 @@ enqueue_codex_job({
 - テストは通常通り実行されます（`package.json` の `test` スクリプトがあれば）
 - 作業ディレクトリの変更は直接適用されます（ワークツリーの分離なし）
 
+### バリデーションとメタデータ
+
+- `use_worktree=false` の場合、`repo_url` は絶対パス必須（相対パスは400）。CLI/Toolの自動設定はカレントディレクトリの絶対パスになります。
+- `use_worktree=true` の場合は `worktree_path` が必須（空文字不可）。no-worktreeモードでは空文字を渡してワークツリー削除を防止します。
+- `result_summary` はワークツリー利用時に `worktree_path` を、no-worktreeモードでは `working_directory` を記録します（ディレクトリ名の衝突を避けるため）。
+- ジョブ削除/クリーンアップ時は `use_worktree` フラグと `worktree_path` を確認し、no-worktreeジョブの作業ディレクトリを削除しないよう防御しています。
+
 ### 使用例
 
 ```typescript

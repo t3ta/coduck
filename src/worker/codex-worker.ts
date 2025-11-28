@@ -176,6 +176,7 @@ export class CodexWorker {
       branch: job.branch_name,
       base_ref: job.base_ref,
     };
+    // worktree_path tracks managed worktrees; working_directory is recorded for no-worktree runs to avoid ambiguity.
     const useWorktreeMode = job.use_worktree !== false;
 
     let worktreeContext: WorktreeContext | null = null;
@@ -269,6 +270,7 @@ export class CodexWorker {
 
       // Run tests (common for both modes)
       const testsPassed = await this.runTests(workingDirectory);
+      summary.tests_passed = testsPassed;
       summary.tests = testsPassed === undefined ? 'skipped' : testsPassed ? 'passed' : 'failed';
 
       if (testsPassed === false) {

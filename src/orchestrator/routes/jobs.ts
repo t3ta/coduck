@@ -31,8 +31,16 @@ const createJobSchema = z.object({
   feature_id: z.string().min(1).optional(),
   feature_part: z.string().min(1).optional(),
   push_mode: z.enum(['always', 'never']).optional(),
-  use_worktree: z.boolean().optional().default(true),
+  use_worktree: z.boolean().optional(),
   depends_on: z.array(z.string().uuid()).optional(),
+}).refine((data) => {
+  if (data.use_worktree !== false) {
+    return data.worktree_path.length > 0;
+  }
+  return true;
+}, {
+  message: 'worktree_path must be non-empty when use_worktree=true',
+  path: ['worktree_path'],
 });;
 
 const listJobsQuerySchema = z.object({
@@ -313,8 +321,8 @@ router.delete('/:id', async (req, res, next) => {
     // - use_worktree flag check: primary safety mechanism
     // - empty worktree_path check: additional protection for no-worktree mode jobs
     const usedWorktreeMode = job.use_worktree !== false;
-    const hasValidWorktreePath = job.worktree_path && job.worktree_path.trim() !== '';
-    if (usedWorktreeMode && hasValidWorktreePath) {
+    const hasWorktreePath = job.worktree_path && job.worktree_path.trim() !== '';
+    if (usedWorktreeMode && hasWorktreePath) {
       const worktreeStillInUse = isWorktreeInUse(job.worktree_path, [job.id]);
       if (!worktreeStillInUse) {
         try {
@@ -362,8 +370,8 @@ router.post('/cleanup', async (req, res, next) => {
     const worktreePaths = [...new Set(result.deleted
       .filter((job) => {
         const usedWorktreeMode = job.use_worktree !== false;
-        const hasValidWorktreePath = job.worktree_path && job.worktree_path.trim() !== '';
-        return usedWorktreeMode && hasValidWorktreePath;
+        const hasWorktreePath = job.worktree_path && job.worktree_path.trim() !== '';
+        return usedWorktreeMode && hasWorktreePath;
       })
       .map((job) => job.worktree_path))];
     for (const worktreePath of worktreePaths) {

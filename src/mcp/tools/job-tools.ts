@@ -222,8 +222,8 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
     // - use_worktree flag check: primary safety mechanism
     // - empty worktree_path check: additional protection for no-worktree mode jobs
     const usedWorktreeMode = job.use_worktree !== false;
-    const hasValidWorktreePath = job.worktree_path && job.worktree_path.trim() !== '';
-    if (usedWorktreeMode && hasValidWorktreePath) {
+    const hasWorktreePath = job.worktree_path && job.worktree_path.trim() !== '';
+    if (usedWorktreeMode && hasWorktreePath) {
       try {
         await removeWorktree(job.worktree_path);
       } catch (error) {
@@ -249,8 +249,8 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
     const worktreePaths = [...new Set(result.jobs
       .filter((job) => {
         const usedWorktreeMode = job.use_worktree !== false;
-        const hasValidWorktreePath = job.worktree_path && job.worktree_path.trim() !== '';
-        return usedWorktreeMode && hasValidWorktreePath;
+        const hasWorktreePath = job.worktree_path && job.worktree_path.trim() !== '';
+        return usedWorktreeMode && hasWorktreePath;
       })
       .map((job) => job.worktree_path))];
     for (const worktreePath of worktreePaths) {
