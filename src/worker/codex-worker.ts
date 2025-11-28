@@ -5,7 +5,7 @@ import type { ExecFileOptions } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 
-import type { Job } from '../shared/types.js';
+import type { Job, ResultSummary } from '../shared/types.js';
 import { appConfig } from '../shared/config.js';
 import { createWorktree, WorktreeContext } from './worktree.js';
 import { executeCodex, continueCodex } from './executor.js';
@@ -40,8 +40,6 @@ const pathExists = async (targetPath: string): Promise<boolean> => {
 type CommandResult = { stdout: string; stderr: string };
 
 type JobCompletionStatus = 'done' | 'failed' | 'awaiting_input';
-
-type ResultSummary = Record<string, unknown>;
 
 type CodexWorkerDependencies = {
   /**
@@ -178,6 +176,7 @@ export class CodexWorker {
       branch: job.branch_name,
       base_ref: job.base_ref,
     };
+    const useWorktreeMode = job.use_worktree !== false;
 
     let worktreeContext: WorktreeContext | null = null;
     let workingDirectory: string;
@@ -187,7 +186,7 @@ export class CodexWorker {
 
     try {
       // Determine working directory based on use_worktree mode
-      if (job.use_worktree !== false) {
+      if (useWorktreeMode) {
         // Worktree mode: create or reuse worktree
         const repoPath = await this.ensureRepoPath(job.repo_url);
         const worktreePath = await this.resolveWorktreePath(job.worktree_path);
@@ -199,9 +198,7 @@ export class CodexWorker {
         });
         workingDirectory = worktreeContext.path;
       } else {
-        // No-worktree mode: use existing directory
-        // In no-worktree mode, repo_url contains the absolute path to the working directory
-        // (In worktree mode, repo_url contains the Git repository path)
+        // No-worktree mode uses repo_url as the absolute working directory (recorded for debugging/result summaries)
         workingDirectory = path.resolve(job.repo_url);
         summary.working_directory = workingDirectory;
 
@@ -247,7 +244,7 @@ export class CodexWorker {
       }
 
       // Git operations (skip in no-worktree mode)
-      if (job.use_worktree !== false) {
+      if (useWorktreeMode) {
         const commitHash = await this.commitChanges(workingDirectory, job.id);
         summary.commit_hash = commitHash ?? null;
 
@@ -278,7 +275,7 @@ export class CodexWorker {
         throw new Error('Tests failed');
       }
 
-      summary.message = job.use_worktree !== false
+      summary.message = useWorktreeMode
         ? 'Codex job completed successfully'
         : 'Codex job completed successfully (no worktree mode)';
       success = true;
@@ -307,7 +304,7 @@ export class CodexWorker {
 
         if (worktreeContext && job.push_mode === 'never') {
           console.log(`Job ${job.id} completed. Worktree preserved (push_mode='never').`);
-        } else if (job.use_worktree === false) {
+        } else if (!useWorktreeMode) {
           console.log(`Job ${job.id} completed. Working directory unchanged.`);
         } else {
           console.log(`Job ${job.id} completed.`);

@@ -218,7 +218,7 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
 
     const job = await orchestratorClient.deleteJob(jobId);
     // Only remove worktree if job used worktree mode
-    // Double-check prevents deletion of user directories:
+    // Double-check prevents deletion of user directories (keeps backward compatibility with legacy jobs that had empty worktree_path):
     // - use_worktree flag check: primary safety mechanism
     // - empty worktree_path check: additional protection for no-worktree mode jobs
     const usedWorktreeMode = job.use_worktree !== false;
@@ -244,7 +244,7 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
 
     const result = await orchestratorClient.cleanupJobs(sanitizedOptions);
     const jobList = result.jobs.length ? result.jobs.map((job) => formatJob(job)).join('\n\n') : 'No jobs deleted.';
-    // Filter out no-worktree mode jobs to prevent deletion of user directories
+    // Filter out no-worktree mode jobs to prevent deletion of user directories (legacy jobs may have empty worktree_path)
     // Double-check: use_worktree flag (primary) and non-empty worktree_path (additional protection)
     const worktreePaths = [...new Set(result.jobs
       .filter((job) => {

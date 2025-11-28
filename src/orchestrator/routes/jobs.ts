@@ -309,7 +309,7 @@ router.delete('/:id', async (req, res, next) => {
       return res.status(404).json({ error: 'Job not found' });
     }
     // Only remove worktree if job used worktree mode
-    // Double-check prevents deletion of user directories:
+    // Double-check prevents deletion of user directories (legacy jobs may have empty worktree_path):
     // - use_worktree flag check: primary safety mechanism
     // - empty worktree_path check: additional protection for no-worktree mode jobs
     const usedWorktreeMode = job.use_worktree !== false;
@@ -357,7 +357,7 @@ router.post('/cleanup', async (req, res, next) => {
     const payload = cleanupJobsSchema.parse(req.body ?? {});
     const result = deleteJobs(payload);
     const deletedJobIds = result.deleted.map((job) => job.id);
-    // Filter out no-worktree mode jobs to prevent deletion of user directories
+    // Filter out no-worktree mode jobs to prevent deletion of user directories (legacy jobs may have empty worktree_path)
     // Double-check: use_worktree flag (primary) and non-empty worktree_path (additional protection)
     const worktreePaths = [...new Set(result.deleted
       .filter((job) => {

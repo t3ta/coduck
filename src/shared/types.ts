@@ -34,6 +34,12 @@ export interface JobDependency {
   depends_on_job_id: string;
 }
 
+export interface ResultSummary extends Record<string, unknown> {
+  git_skipped?: boolean;
+  working_directory?: string;
+  worktree_path?: string;
+}
+
 export type WorktreeState = 'orphaned' | 'in_use' | 'protected' | 'locked' | 'unmanaged';
 
 export interface WorktreeJobSummary {
