@@ -18,6 +18,7 @@ export interface Job {
   feature_id?: string | null;
   feature_part?: string | null;
   push_mode?: 'always' | 'never';
+  use_worktree?: boolean; // Default: true
   status: JobStatus;
   spec_json: SpecJson;
   result_summary: string | null;

@@ -30,6 +30,7 @@ const createJobSchema = z.object({
   feature_id: z.string().min(1).optional(),
   feature_part: z.string().min(1).optional(),
   push_mode: z.enum(['always', 'never']).optional(),
+  use_worktree: z.boolean().optional().default(true),
   depends_on: z.array(z.string().uuid()).optional(),
 });;
 
@@ -127,6 +128,19 @@ router.post('/', (req, res, next) => {
   try {
     const payload = createJobSchema.parse(req.body);
 
+    // Validate and auto-configure no-worktree mode
+    if (payload.use_worktree === false) {
+      // Force push_mode to 'never' for no-worktree mode
+      payload.push_mode = 'never';
+
+      // worktree_path must be absolute when use_worktree=false
+      if (!require('node:path').isAbsolute(payload.worktree_path)) {
+        return res.status(400).json({
+          error: "worktree_path must be absolute when use_worktree=false"
+        });
+      }
+    }
+
     // Validate dependencies exist and are not failed/cancelled
     if (payload.depends_on && payload.depends_on.length > 0) {
       for (const depId of payload.depends_on) {
@@ -158,6 +172,7 @@ router.post('/', (req, res, next) => {
         feature_id: payload.feature_id ?? null,
         feature_part: payload.feature_part ?? null,
         push_mode: payload.push_mode ?? 'always',
+        use_worktree: payload.use_worktree,
       });
 
       // Check for circular dependencies before setting

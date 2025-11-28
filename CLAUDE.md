@@ -183,6 +183,67 @@ enqueue_codex_job({
 // → ローカルで確認後、手動でpush & PR作成
 ```
 
+## ワークツリーなしモード
+
+### 概要
+
+既存のClaude Code作業ディレクトリで直接Codexを実行するモードです。Gitワークツリーを作成せず、ファイルの変更のみを行います。
+
+### 用途
+
+- 既存プロジェクトへの直接適用
+- シンプルな実験やプロトタイピング
+- 高速な小規模変更
+- コードの変更がない運用作業（調査、分析、ドキュメント生成など）
+
+### 使用方法
+
+MCP Tool経由で以下のように指定:
+
+```typescript
+enqueue_codex_job({
+  goal: "プロジェクト構造を分析してREADMEに記載",
+  context_files: ["src/", "package.json"],
+  use_worktree: false, // ワークツリーなしモード
+});
+```
+
+**注意**:
+- `repo_url` と `worktree_path` は自動的に現在の作業ディレクトリ（`process.cwd()`）に設定されます
+- `push_mode` は自動的に `'never'` に設定されます
+- `branch_name` と `base_ref` は無視されます（Git操作がないため）
+
+### 制約
+
+- Git操作（コミット、プッシュ）は実行されません
+- テストは通常通り実行されます（`package.json` の `test` スクリプトがあれば）
+- 作業ディレクトリの変更は直接適用されます（ワークツリーの分離なし）
+
+### 使用例
+
+```typescript
+// 例1: コードベースの調査（ファイル変更なし）
+enqueue_codex_job({
+  goal: "このプロジェクトの依存関係を分析して、セキュリティリスクをレポート",
+  context_files: ["package.json", "package-lock.json"],
+  use_worktree: false,
+});
+
+// 例2: 小規模な変更（手動でコミット）
+enqueue_codex_job({
+  goal: "ESLintの警告を修正",
+  context_files: ["src/**/*.ts"],
+  use_worktree: false,
+});
+
+// 例3: ドキュメント生成
+enqueue_codex_job({
+  goal: "API仕様書をOpenAPI形式で生成",
+  context_files: ["src/api/"],
+  use_worktree: false,
+});
+```
+
 ## ジョブ依存関係管理（DAG）
 
 ### 概要

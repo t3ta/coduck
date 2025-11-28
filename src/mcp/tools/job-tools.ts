@@ -28,6 +28,7 @@ const enqueueCodexJobSchema = z.object({
   feature_id: z.string().min(1, 'Feature ID cannot be empty.').optional(),
   feature_part: z.string().min(1, 'Feature part cannot be empty.').optional(),
   push_mode: z.enum(['always', 'never']).optional(),
+  use_worktree: z.boolean().optional().default(true),
   depends_on: z.array(z.string().uuid('Each dependency must be a valid job UUID.')).optional().describe('Job IDs that this job depends on (must complete before this job can start)'),
 });;
 
@@ -170,6 +171,7 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
       feature_id: args.feature_id?.trim() || undefined,
       feature_part: args.feature_part?.trim() || undefined,
       push_mode: args.push_mode || undefined,
+      use_worktree: args.use_worktree,
       depends_on: args.depends_on || undefined,
     });
 

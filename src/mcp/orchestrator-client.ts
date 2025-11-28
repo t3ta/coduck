@@ -78,6 +78,7 @@ export interface EnqueueCodexJobArgs {
   feature_id?: string;
   feature_part?: string;
   push_mode?: 'always' | 'never';
+  use_worktree?: boolean;
   depends_on?: string[];
 }
 
@@ -130,26 +131,39 @@ export class OrchestratorClient {
       ...(args.notes ? { notes: args.notes } : {}),
     };
 
-    // Determine branch_name: explicit > feature_id > auto-generated
+    // No-worktree mode: use current working directory
+    let repoUrl: string;
+    let worktreePath: string;
     let branchName: string;
-    if (args.branch_name?.trim()) {
-      branchName = args.branch_name.trim();
-    } else if (args.feature_id?.trim()) {
-      // Sanitize feature_id for use as git ref (same logic as generateJobMetadata)
-      const sanitizedFeatureId = args.feature_id
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
-      // Fall back to auto-generated branch if sanitized feature_id is empty
-      branchName = sanitizedFeatureId ? `feature/${sanitizedFeatureId}` : this.generateJobMetadata(args.goal).branchName;
+
+    if (args.use_worktree === false) {
+      const cwd = process.cwd();
+      repoUrl = cwd;
+      worktreePath = cwd;
+      branchName = 'temp'; // Dummy value for DB constraint
+      console.log(`Using no-worktree mode with working directory: ${cwd}`);
     } else {
-      branchName = this.generateJobMetadata(args.goal).branchName;
+      // Determine branch_name: explicit > feature_id > auto-generated
+      if (args.branch_name?.trim()) {
+        branchName = args.branch_name.trim();
+      } else if (args.feature_id?.trim()) {
+        // Sanitize feature_id for use as git ref (same logic as generateJobMetadata)
+        const sanitizedFeatureId = args.feature_id
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, '');
+        // Fall back to auto-generated branch if sanitized feature_id is empty
+        branchName = sanitizedFeatureId ? `feature/${sanitizedFeatureId}` : this.generateJobMetadata(args.goal).branchName;
+      } else {
+        branchName = this.generateJobMetadata(args.goal).branchName;
+      }
+
+      repoUrl = this.repoUrl;
+      worktreePath = this.resolveWorktreePath(branchName);
     }
 
-    const worktreePath = this.resolveWorktreePath(branchName);
-
     const body = {
-      repo_url: this.repoUrl,
+      repo_url: repoUrl,
       base_ref: baseRef,
       branch_name: branchName,
       worktree_path: worktreePath,
@@ -158,6 +172,7 @@ export class OrchestratorClient {
       feature_id: args.feature_id,
       feature_part: args.feature_part,
       push_mode: args.push_mode ?? 'always',
+      use_worktree: args.use_worktree,
       depends_on: args.depends_on,
     };
 
