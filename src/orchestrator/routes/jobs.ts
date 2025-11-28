@@ -22,7 +22,7 @@ const createJobSchema = z.object({
   repo_url: z.string().min(1),
   base_ref: z.string().min(1),
   branch_name: z.string().min(1),
-  worktree_path: z.string().min(1),
+  worktree_path: z.string(), // Allow empty string for no-worktree mode
   worker_type: z.string().min(1),
   spec_json: specJsonSchema,
   result_summary: z.unknown().optional(),
@@ -133,8 +133,9 @@ router.post('/', (req, res, next) => {
       // Force push_mode to 'never' for no-worktree mode
       payload.push_mode = 'never';
 
-      // worktree_path must be absolute when use_worktree=false
-      if (!require('node:path').isAbsolute(payload.worktree_path)) {
+      // worktree_path can be empty for no-worktree mode (working directory is in repo_url)
+      // If provided, it must be absolute
+      if (payload.worktree_path && payload.worktree_path.trim() !== '' && !require('node:path').isAbsolute(payload.worktree_path)) {
         return res.status(400).json({
           error: "worktree_path must be absolute when use_worktree=false"
         });
