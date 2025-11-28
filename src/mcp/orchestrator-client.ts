@@ -171,7 +171,7 @@ export class OrchestratorClient {
       spec_json: specPayload,
       feature_id: args.feature_id,
       feature_part: args.feature_part,
-      push_mode: args.push_mode ?? 'always',
+      push_mode: args.use_worktree === false ? 'never' : (args.push_mode ?? 'always'),
       use_worktree: args.use_worktree,
       depends_on: args.depends_on,
     };

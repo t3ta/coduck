@@ -106,7 +106,7 @@ const deserializeJob = (row: JobRow): Job => {
     feature_id: row.feature_id,
     feature_part: row.feature_part,
     push_mode: (row.push_mode as 'always' | 'never') ?? 'always',
-    use_worktree: row.use_worktree === 1 ? true : (row.use_worktree === 0 ? false : undefined),
+    use_worktree: row.use_worktree === 0 ? false : true, // NULL defaults to true
     resume_requested: !!row.resume_requested,
     status: row.status,
     spec_json: JSON.parse(row.spec_json),
