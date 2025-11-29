@@ -18,6 +18,7 @@ export interface Job {
   feature_id?: string | null;
   feature_part?: string | null;
   push_mode?: 'always' | 'never';
+  use_worktree?: boolean; // Default: true
   status: JobStatus;
   spec_json: SpecJson;
   result_summary: string | null;
@@ -31,6 +32,41 @@ export interface Job {
 export interface JobDependency {
   job_id: string;
   depends_on_job_id: string;
+}
+
+export interface ResultSummary extends Record<string, unknown> {
+  jobId?: string;
+  repo_url?: string;
+  branch?: string;
+  base_ref?: string;
+
+  git_skipped?: boolean;
+  working_directory?: string;
+  worktree_path?: string;
+  commit_hash?: string | null;
+  tests_passed?: boolean;
+  message?: string;
+  error?: string;
+  cleanup_error?: string;
+  pushed?: boolean;
+
+  codex?: {
+    conversationId?: string;
+    conversation_id?: string | null;
+    success?: boolean;
+    awaiting_input?: boolean;
+    duration_ms?: number;
+    timed_out?: boolean;
+  };
+  conversation_id?: string | null;
+  continuations?: Array<{
+    prompt?: string;
+    response?: string;
+    user_prompt?: string;
+    conversation_id?: string;
+    at?: string;
+  }>;
+  last_continuation?: Record<string, unknown>;
 }
 
 export type WorktreeState = 'orphaned' | 'in_use' | 'protected' | 'locked' | 'unmanaged';

@@ -118,9 +118,10 @@ Claude Code → MCP Tool → Orchestrator API → SQLite
 
 ### ワークツリーの基本
 
-- デフォルトディレクトリ: `./worktrees/`
+- デフォルトディレクトリ: `./worktrees/`（`WORKTREE_BASE_DIR`で変更可）
+- `worktree_path` は branch 名を `-` 置換したディレクトリ名で上記ディレクトリ配下に絶対パス生成。no-worktreeジョブは空文字を送って worktree 削除を防ぐ
 - 同じ`branch_name`を持つJobは同じworktreeを共有
-- ワークツリーは手動削除が必要（自動クリーンアップなし）
+- 成功時かつ`push_mode!=='never'`の場合は自動クリーンアップ。`push_mode='never'`または失敗時は調査のために保持
 - 会話継続時は既存ワークツリーを再利用してコンテキストを保持
 - `repo_url` はローカルリポジトリの絶対パスを前提（例: `/home/user/workspace/my-app`）。同一マシン内でworktreeとローカルリポジトリが親和的に扱われ、ネットワーク経由のcloneやpushに依存しない
 
@@ -181,6 +182,83 @@ enqueue_codex_job({
 
 // → 同じfeature/navy-commentブランチに2つのJobがcommit
 // → ローカルで確認後、手動でpush & PR作成
+```
+
+## ワークツリーなしモード
+
+### 概要
+
+既存のClaude Code作業ディレクトリで直接Codexを実行するモードです。Gitワークツリーを作成せず、ファイルの変更のみを行います。
+
+### 用途
+
+- 既存プロジェクトへの直接適用
+- シンプルな実験やプロトタイピング
+- 高速な小規模変更
+- コードの変更がない運用作業（調査、分析、ドキュメント生成など）
+
+### 使用方法
+
+MCP Tool経由で以下のように指定:
+
+```typescript
+enqueue_codex_job({
+  goal: "プロジェクト構造を分析してREADMEに記載",
+  context_files: ["src/", "package.json"],
+  use_worktree: false, // ワークツリーなしモード
+});
+```
+
+**注意**:
+- `repo_url` は現在の作業ディレクトリの絶対パスに自動設定（ユーザー指定時も絶対パス必須）
+- `worktree_path` は常に空文字列（worker がクリーンアップ対象として扱わないため）
+- `working_directory` は result_summary に記録され、実行パスを明示
+- `push_mode` は強制的に `'never'`
+- `branch_name` は `no-worktree-<uuid>`形式で自動生成（Git操作はしないがメタデータとして保存）
+- `base_ref` は使用されません（no-worktreeモードではGitブランチ操作を行わないため、baseブランチからの分岐が発生しません）
+
+### 制約
+
+- Git操作（コミット、プッシュ）は実行されません
+- テストは通常通り実行されます（`package.json` の `test` スクリプトがあれば）
+- 作業ディレクトリの変更は直接適用されます（ワークツリーの分離なし）。worker/cleanupはいずれもこのディレクトリを削除しません（`use_worktree=false` + 空の`worktree_path`で防御）
+- コミットやpushは利用者が手動で行う必要があります
+- 同じディレクトリで複数のno-worktreeジョブを同時実行すると競合が発生する可能性があります
+
+### バリデーションとメタデータ
+
+- `use_worktree=false` の場合、`repo_url` は絶対パス必須（相対パスは400）。CLI/Toolの自動設定は `process.cwd()` の絶対パス。
+- `use_worktree=true` の場合は `worktree_path` が必須（空文字不可）。オーケストレーターで `WORKTREE_BASE_DIR` 配下の絶対パスに解決されます。
+- プロパティ名の使い分け:
+  - `worktree_path`: workerが管理するGitワークツリーのパス。クリーンアップ対象。
+  - `working_directory`: no-worktree実行時の実ディレクトリ。削除/クリーンアップ対象外にするため別名で記録。
+  - `conversation_id`: CodexセッションID。`result_summary.codex.conversation_id` とジョブの `conversation_id` の両方で保持（互換性のため）。
+- `result_summary` は上記プロパティを保存してディレクトリ衝突や誤削除を避けます。
+- ジョブ削除/クリーンアップ時は `use_worktree` フラグと `worktree_path` を確認し、no-worktreeジョブの作業ディレクトリを削除しないよう防御しています。
+
+### 使用例
+
+```typescript
+// 例1: コードベースの調査（ファイル変更なし）
+enqueue_codex_job({
+  goal: "このプロジェクトの依存関係を分析して、セキュリティリスクをレポート",
+  context_files: ["package.json", "package-lock.json"],
+  use_worktree: false,
+});
+
+// 例2: 小規模な変更（手動でコミット）
+enqueue_codex_job({
+  goal: "ESLintの警告を修正",
+  context_files: ["src/**/*.ts"],
+  use_worktree: false,
+});
+
+// 例3: ドキュメント生成
+enqueue_codex_job({
+  goal: "API仕様書をOpenAPI形式で生成",
+  context_files: ["src/api/"],
+  use_worktree: false,
+});
 ```
 
 ## ジョブ依存関係管理（DAG）

@@ -5,7 +5,7 @@ import type { ExecFileOptions } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 
-import type { Job } from '../shared/types.js';
+import type { Job, ResultSummary } from '../shared/types.js';
 import { appConfig } from '../shared/config.js';
 import { createWorktree, WorktreeContext } from './worktree.js';
 import { executeCodex, continueCodex } from './executor.js';
@@ -40,8 +40,6 @@ const pathExists = async (targetPath: string): Promise<boolean> => {
 type CommandResult = { stdout: string; stderr: string };
 
 type JobCompletionStatus = 'done' | 'failed' | 'awaiting_input';
-
-type ResultSummary = Record<string, unknown>;
 
 type CodexWorkerDependencies = {
   /**
@@ -178,29 +176,55 @@ export class CodexWorker {
       branch: job.branch_name,
       base_ref: job.base_ref,
     };
+    // worktree_path is only set when the worker owns a managed worktree (safe to clean up).
+    // working_directory captures the user-provided path for no-worktree runs so we never delete the wrong directory.
+    const useWorktreeMode = job.use_worktree !== false;
 
     let worktreeContext: WorktreeContext | null = null;
+    let workingDirectory: string;
     let success = false;
     // sessionId is the Codex session identifier (stored as conversation_id in DB for compatibility)
     let sessionId: string | null = job.conversation_id ?? null;
 
     try {
-      const repoPath = await this.ensureRepoPath(job.repo_url);
-      const worktreePath = await this.resolveWorktreePath(job.worktree_path);
-      summary.worktree_path = worktreePath;
+      // Determine working directory based on use_worktree mode
+      if (useWorktreeMode) {
+        // Worktree mode: create or reuse worktree
+        const repoPath = await this.ensureRepoPath(job.repo_url);
+        const worktreePath = await this.resolveWorktreePath(job.worktree_path);
+        summary.worktree_path = worktreePath;
 
-      const preserveWorktree = !!job.resume_requested;
-      worktreeContext = await this.createWorktreeImpl(repoPath, job.base_ref, job.branch_name, worktreePath, {
-        preserveChanges: preserveWorktree,
-      });
+        const preserveWorktree = !!job.resume_requested;
+        worktreeContext = await this.createWorktreeImpl(repoPath, job.base_ref, job.branch_name, worktreePath, {
+          preserveChanges: preserveWorktree,
+        });
+        workingDirectory = worktreeContext.path;
+      } else {
+        // No-worktree mode: repo_url contains the absolute working directory path.
+        // Note: worktree_path is kept empty to prevent directory deletion.
+        // Use working_directory in ResultSummary to record the actual path.
+        workingDirectory = job.repo_url;
+        summary.working_directory = workingDirectory;
 
-      // Check if this is a resume request (timed-out job being continued)
+        // Verify working directory exists
+        try {
+          await fs.access(workingDirectory);
+        } catch (err) {
+          throw new Error(
+            `Working directory does not exist or is not accessible: ${workingDirectory}. Original error: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+
+        console.log(`Job ${job.id}: Using existing directory (no worktree): ${workingDirectory}`);
+      }
+
+      // Execute Codex (common for both modes)
       let execution;
       if (job.resume_requested && job.conversation_id) {
         console.log(`Job ${job.id}: Resuming timed-out session ${job.conversation_id}`);
-        execution = await continueCodex(worktreeContext.path, job.conversation_id, '続きを実行して', job.id);
+        execution = await continueCodex(workingDirectory, job.conversation_id, '続きを実行して', job.id);
       } else {
-        execution = await this.executeCodexImpl(worktreeContext.path, job.spec_json, job.id);
+        execution = await this.executeCodexImpl(workingDirectory, job.spec_json, job.id);
       }
       if (execution.sessionId) {
         sessionId = execution.sessionId;
@@ -225,29 +249,41 @@ export class CodexWorker {
         throw new Error(execution.error ?? 'Codex execution failed');
       }
 
-      const commitHash = await this.commitChanges(worktreeContext.path, job.id);
-      summary.commit_hash = commitHash ?? null;
+      // Git operations (skip in no-worktree mode)
+      if (useWorktreeMode) {
+        const commitHash = await this.commitChanges(workingDirectory, job.id);
+        summary.commit_hash = commitHash ?? null;
 
-      if (commitHash && job.push_mode !== 'never') {
-        await this.pushBranch(worktreeContext.path, job.branch_name);
-        summary.pushed = true;
-      } else {
-        summary.pushed = false;
-        if (!commitHash) {
-          console.log(`Job ${job.id}: No changes detected, skipping push.`);
-        } else if (job.push_mode === 'never') {
-          console.log(`Job ${job.id}: push_mode is 'never', skipping push.`);
+        if (commitHash && job.push_mode !== 'never') {
+          await this.pushBranch(workingDirectory, job.branch_name);
+          summary.pushed = true;
+        } else {
+          summary.pushed = false;
+          if (!commitHash) {
+            console.log(`Job ${job.id}: No changes detected, skipping push.`);
+          } else if (job.push_mode === 'never') {
+            console.log(`Job ${job.id}: push_mode is 'never', skipping push.`);
+          }
         }
+      } else {
+        // No-worktree mode: skip all Git operations
+        summary.commit_hash = null;
+        summary.pushed = false;
+        summary.git_skipped = true;
+        console.log(`Job ${job.id}: Git operations skipped (use_worktree=false)`);
       }
 
-      const testsPassed = await this.runTests(worktreeContext.path);
-      summary.tests = testsPassed === undefined ? 'skipped' : testsPassed ? 'passed' : 'failed';
+      // Run tests (common for both modes)
+      const testsPassed = await this.runTests(workingDirectory);
+      summary.tests_passed = testsPassed;
 
       if (testsPassed === false) {
         throw new Error('Tests failed');
       }
 
-      summary.message = 'Codex job completed successfully';
+      summary.message = useWorktreeMode
+        ? 'Codex job completed successfully'
+        : 'Codex job completed successfully (no worktree mode)';
       success = true;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -258,7 +294,7 @@ export class CodexWorker {
 
     try {
       if (success) {
-        // Clean up worktree BEFORE marking job as done to prevent race conditions
+        // Clean up worktree (only for worktree mode)
         if (worktreeContext && job.push_mode !== 'never') {
           try {
             await worktreeContext.cleanup();
@@ -274,6 +310,8 @@ export class CodexWorker {
 
         if (worktreeContext && job.push_mode === 'never') {
           console.log(`Job ${job.id} completed. Worktree preserved (push_mode='never').`);
+        } else if (!useWorktreeMode) {
+          console.log(`Job ${job.id} completed. Working directory unchanged.`);
         } else {
           console.log(`Job ${job.id} completed.`);
         }

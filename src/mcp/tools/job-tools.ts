@@ -28,8 +28,9 @@ const enqueueCodexJobSchema = z.object({
   feature_id: z.string().min(1, 'Feature ID cannot be empty.').optional(),
   feature_part: z.string().min(1, 'Feature part cannot be empty.').optional(),
   push_mode: z.enum(['always', 'never']).optional(),
+  use_worktree: z.boolean().optional().default(true),
   depends_on: z.array(z.string().uuid('Each dependency must be a valid job UUID.')).optional().describe('Job IDs that this job depends on (must complete before this job can start)'),
-});;
+});
 
 const listJobsSchema = z.object({
   status: z.enum(JOB_STATUSES).optional(),
@@ -170,6 +171,7 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
       feature_id: args.feature_id?.trim() || undefined,
       feature_part: args.feature_part?.trim() || undefined,
       push_mode: args.push_mode || undefined,
+      use_worktree: args.use_worktree,
       depends_on: args.depends_on || undefined,
     });
 
@@ -215,10 +217,16 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
     }
 
     const job = await orchestratorClient.deleteJob(jobId);
-    try {
-      await removeWorktree(job.worktree_path);
-    } catch (error) {
-      console.warn(`Failed to remove worktree ${job.worktree_path}:`, error);
+    // Only remove worktree if it was managed by the worker.
+    // Safety guard: require use_worktree=true and a non-empty worktree_path to avoid deleting user directories from legacy no-worktree jobs.
+    const usedWorktreeMode = job.use_worktree !== false;
+    const hasWorktreePath = job.worktree_path && job.worktree_path.trim() !== '';
+    if (usedWorktreeMode && hasWorktreePath) {
+      try {
+        await removeWorktree(job.worktree_path);
+      } catch (error) {
+        console.warn(`Failed to remove worktree ${job.worktree_path}:`, error);
+      }
     }
     const summary = `Deleted job ${job.id}\n\n${formatJob(job)}`;
     return createTextResult(summary, { job });
@@ -234,7 +242,14 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
 
     const result = await orchestratorClient.cleanupJobs(sanitizedOptions);
     const jobList = result.jobs.length ? result.jobs.map((job) => formatJob(job)).join('\n\n') : 'No jobs deleted.';
-    const worktreePaths = [...new Set(result.jobs.map((job) => job.worktree_path))];
+    // Only delete worktrees that the worker created: require use_worktree=true and a non-empty worktree_path to avoid removing user directories or legacy no-worktree jobs.
+    const worktreePaths = [...new Set(result.jobs
+      .filter((job) => {
+        const usedWorktreeMode = job.use_worktree !== false;
+        const hasWorktreePath = job.worktree_path && job.worktree_path.trim() !== '';
+        return usedWorktreeMode && hasWorktreePath;
+      })
+      .map((job) => job.worktree_path))];
     for (const worktreePath of worktreePaths) {
       try {
         await removeWorktree(worktreePath);

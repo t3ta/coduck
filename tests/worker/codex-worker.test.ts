@@ -1,3 +1,7 @@
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+
 import { describe, expect, it, jest } from '../utils/jest-lite.js';
 import type { Job } from '../../src/shared/types.ts';
 import { CodexWorker } from '../../src/worker/codex-worker.ts';
@@ -58,7 +62,7 @@ describe('CodexWorker handleJob', () => {
     expect(codexSummary.success).toBe(true);
     expect(codexSummary.awaiting_input).toBe(false);
     expect(codexSummary.conversation_id).toBe('conv-123');
-    expect(summary.tests).toBe('passed');
+    expect(summary.tests_passed).toBe(true);
     expect(summary.commit_hash).toBe('abc123');
     expect(summary.pushed).toBe(true);
     expect(cleanup.mock.calls.length).toBe(1);
@@ -135,6 +139,55 @@ describe('CodexWorker handleJob', () => {
     expect(codexSummary.conversation_id).toBe('conv-await');
     expect(summary.message).toBe('Codex is awaiting additional input before proceeding.');
     expect(cleanup.mock.calls.length).toBe(0);
+  });
+
+  it('should not delete working directory in no-worktree mode', async () => {
+    const workingDir = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-worker-noworktree-'));
+    const createWorktree = jest.fn(() => {
+      throw new Error('createWorktree should not be called in no-worktree mode');
+    });
+    const executeCodex = jest.fn().mockResolvedValue({ success: true, sessionId: 'conv-noworktree' });
+    const completeJob = jest.fn().mockResolvedValue(undefined);
+    const commitChanges = jest.fn(() => {
+      throw new Error('commitChanges should not be called in no-worktree mode');
+    });
+    const pushBranch = jest.fn(() => {
+      throw new Error('pushBranch should not be called in no-worktree mode');
+    });
+
+    const worker = new CodexWorker({ fetchImpl: jest.fn(), createWorktree, executeCodex });
+
+    (worker as any).runTests = jest.fn().mockResolvedValue(true);
+    (worker as any).completeJob = completeJob;
+    (worker as any).commitChanges = commitChanges;
+    (worker as any).pushBranch = pushBranch;
+
+    try {
+      await (worker as any).handleJob(createJob({
+        use_worktree: false,
+        repo_url: workingDir,
+        worktree_path: '',
+        push_mode: 'never',
+      }));
+
+      await fs.access(workingDir);
+      // Verify createWorktree was not called
+      expect(createWorktree.mock.calls.length).toBe(0);
+      // Verify Git operations were not called
+      expect(commitChanges.mock.calls.length).toBe(0);
+      expect(pushBranch.mock.calls.length).toBe(0);
+      // Verify executeCodex was called with correct working directory
+      expect(executeCodex.mock.calls[0][0]).toBe(workingDir);
+      expect(completeJob.mock.calls.length).toBe(1);
+      const [, status, summary] = completeJob.mock.calls[0];
+      expect(status).toBe('done');
+      expect(summary.working_directory).toBe(workingDir);
+      expect(summary.worktree_path).toBe(undefined);
+      // Verify git_skipped flag is set
+      expect(summary.git_skipped).toBe(true);
+    } finally {
+      await fs.rm(workingDir, { recursive: true, force: true });
+    }
   });
 
   describe('handleJob with push_mode', () => {

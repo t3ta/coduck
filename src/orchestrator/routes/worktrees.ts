@@ -158,6 +158,10 @@ const collectWorktreeInfo = async (): Promise<WorktreeInfo[]> => {
   const jobMap = new Map<string, WorktreeJobSummary[]>();
 
   for (const job of jobs) {
+    // Skip jobs with empty worktree_path (no-worktree mode)
+    if (!job.worktree_path || job.worktree_path.trim() === '') {
+      continue;
+    }
     const resolvedPath = path.resolve(job.worktree_path);
     const summaries = jobMap.get(resolvedPath) ?? [];
     summaries.push(toJobSummary(job));

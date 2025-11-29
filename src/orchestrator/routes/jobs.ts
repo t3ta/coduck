@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import path from 'node:path';
 
 import type { JobStatus, SpecJson } from '../../shared/types.js';
 import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJobStatus, isWorktreeInUse, setJobDependencies, getJobDependencies, getDependentJobs, checkCircularDependency, addJobLog, getJobLogs, sanitizeResultSummaryValue, touchJobUpdatedAt, resumeJob } from '../models/job.js';
@@ -22,7 +23,7 @@ const createJobSchema = z.object({
   repo_url: z.string().min(1),
   base_ref: z.string().min(1),
   branch_name: z.string().min(1),
-  worktree_path: z.string().min(1),
+  worktree_path: z.string(), // Allow empty string for no-worktree mode
   worker_type: z.string().min(1),
   spec_json: specJsonSchema,
   result_summary: z.unknown().optional(),
@@ -30,8 +31,18 @@ const createJobSchema = z.object({
   feature_id: z.string().min(1).optional(),
   feature_part: z.string().min(1).optional(),
   push_mode: z.enum(['always', 'never']).optional(),
+  use_worktree: z.boolean().optional(),
   depends_on: z.array(z.string().uuid()).optional(),
-});;
+}).refine((data) => {
+  // use_worktree defaults to true when undefined for backward compatibility
+  if (data.use_worktree === undefined || data.use_worktree === true) {
+    return data.worktree_path.length > 0;
+  }
+  return true;
+}, {
+  message: 'worktree_path is required when use_worktree is not false',
+  path: ['worktree_path'],
+});
 
 const listJobsQuerySchema = z.object({
   status: jobStatusEnum.optional(),
@@ -126,6 +137,31 @@ const router = Router();
 router.post('/', (req, res, next) => {
   try {
     const payload = createJobSchema.parse(req.body);
+    const trimmedWorktreePath = payload.worktree_path?.trim();
+
+    // Validate and auto-configure no-worktree mode
+    if (payload.use_worktree === false) {
+      // Force push_mode to 'never' for no-worktree mode
+      payload.push_mode = 'never';
+
+      // In no-worktree mode, repo_url is used as the working directory
+      // Validate that repo_url is an absolute path
+      if (!path.isAbsolute(payload.repo_url)) {
+        return res.status(400).json({
+          error: 'repo_url must be an absolute path when use_worktree=false',
+        });
+      }
+
+      // worktree_path must remain empty for no-worktree mode (working directory is in repo_url)
+      if (trimmedWorktreePath && trimmedWorktreePath !== '') {
+        return res.status(400).json({
+          error: 'worktree_path must be empty when use_worktree=false',
+        });
+      }
+    }
+
+    // Use trimmed worktree_path consistently
+    payload.worktree_path = trimmedWorktreePath ?? '';
 
     // Validate dependencies exist and are not failed/cancelled
     if (payload.depends_on && payload.depends_on.length > 0) {
@@ -158,6 +194,7 @@ router.post('/', (req, res, next) => {
         feature_id: payload.feature_id ?? null,
         feature_part: payload.feature_part ?? null,
         push_mode: payload.push_mode ?? 'always',
+        use_worktree: payload.use_worktree,
       });
 
       // Check for circular dependencies before setting
@@ -283,16 +320,21 @@ router.delete('/:id', async (req, res, next) => {
     if (!job) {
       return res.status(404).json({ error: 'Job not found' });
     }
-    // Only remove worktree if no other jobs reference it
-    const worktreeStillInUse = isWorktreeInUse(job.worktree_path, [job.id]);
-    if (!worktreeStillInUse) {
-      try {
-        await removeWorktree(job.worktree_path);
-      } catch (error) {
-        console.warn(`Failed to remove worktree ${job.worktree_path}:`, error);
+    // Only remove worktrees that the worker created.
+    // Safety guard: require use_worktree=true and a non-empty worktree_path to avoid deleting user directories from legacy no-worktree jobs.
+    const usedWorktreeMode = job.use_worktree !== false;
+    const hasWorktreePath = job.worktree_path && job.worktree_path.trim() !== '';
+    if (usedWorktreeMode && hasWorktreePath) {
+      const worktreeStillInUse = isWorktreeInUse(job.worktree_path, [job.id]);
+      if (!worktreeStillInUse) {
+        try {
+          await removeWorktree(job.worktree_path);
+        } catch (error) {
+          console.warn(`Failed to remove worktree ${job.worktree_path}:`, error);
+        }
+      } else {
+        console.log(`Worktree ${job.worktree_path} still in use by other jobs, skipping removal`);
       }
-    } else {
-      console.log(`Worktree ${job.worktree_path} still in use by other jobs, skipping removal`);
     }
     orchestratorEvents.emit({ type: 'job_deleted', data: { id: job.id } });
     res.status(200).json(stripLogsFromJob(job));
@@ -325,7 +367,14 @@ router.post('/cleanup', async (req, res, next) => {
     const payload = cleanupJobsSchema.parse(req.body ?? {});
     const result = deleteJobs(payload);
     const deletedJobIds = result.deleted.map((job) => job.id);
-    const worktreePaths = [...new Set(result.deleted.map((job) => job.worktree_path))];
+    // Only delete worker-managed worktrees: require use_worktree=true and a non-empty worktree_path to avoid removing user directories or legacy no-worktree jobs.
+    const worktreePaths = [...new Set(result.deleted
+      .filter((job) => {
+        const usedWorktreeMode = job.use_worktree !== false;
+        const hasWorktreePath = job.worktree_path && job.worktree_path.trim() !== '';
+        return usedWorktreeMode && hasWorktreePath;
+      })
+      .map((job) => job.worktree_path))];
     for (const worktreePath of worktreePaths) {
       // Only remove worktree if no other jobs (outside of deleted set) reference it
       const worktreeStillInUse = isWorktreeInUse(worktreePath, deletedJobIds);
