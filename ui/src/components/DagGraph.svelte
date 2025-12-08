@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { onMount } from 'svelte';
   import * as d3 from 'd3';
   // @ts-ignore - dagre-d3 ships without complete TypeScript types
-  import dagreD3 from 'dagre-d3';
+  import * as dagreD3 from 'dagre-d3';
   import type { Job, JobStatus } from '../lib/types';
 
   type Props = {
@@ -14,6 +15,7 @@
   let containerEl: HTMLDivElement | null = null;
   let svgEl: SVGSVGElement | null = null;
   let innerEl: SVGGElement | null = null;
+  let mounted = $state(false);
 
   const statusColors: Record<JobStatus, string> = {
     pending: '#9e9e9e',
@@ -29,14 +31,23 @@
   }
 
   function renderGraph(currentJobs: Job[]) {
-    if (!svgEl || !innerEl) return;
+    if (!svgEl || !innerEl || !mounted) return;
 
-    const graph = new dagreD3.graphlib.Graph({ compound: false }).setGraph({
+    // dagre-d3 graphlib access (handles both ESM default and namespace imports)
+    const graphlib = (dagreD3 as any).graphlib || (dagreD3 as any).default?.graphlib;
+    const renderFn = (dagreD3 as any).render || (dagreD3 as any).default?.render;
+
+    if (!graphlib || !renderFn) {
+      console.error('dagre-d3 not properly loaded', dagreD3);
+      return;
+    }
+
+    const graph = new graphlib.Graph({ compound: false }).setGraph({
       rankdir: 'TB',
-      nodesep: 30,
-      ranksep: 60,
-      marginx: 24,
-      marginy: 24,
+      nodesep: 50,
+      ranksep: 80,
+      marginx: 30,
+      marginy: 30,
     });
     graph.setDefaultEdgeLabel(() => ({}));
 
@@ -75,8 +86,8 @@
 
     inner.selectAll('*').remove();
 
-    const render = new dagreD3.render();
-    render(inner, graph);
+    const render = new renderFn();
+    render(inner as any, graph);
 
     const graphLabel = graph.graph();
     const graphWidth = (graphLabel.width ?? 0) + (graphLabel.marginx ?? 24) * 2;
@@ -122,8 +133,17 @@
     });
   }
 
+  onMount(() => {
+    mounted = true;
+    return () => {
+      mounted = false;
+    };
+  });
+
   $effect(() => {
-    renderGraph(jobs);
+    if (mounted && jobs.length > 0) {
+      renderGraph(jobs);
+    }
   });
 </script>
 
@@ -153,18 +173,22 @@
     display: block;
   }
 
-  .node rect {
+  :global(.dag-graph .node rect) {
     cursor: pointer;
   }
 
-  .node rect:hover {
-    filter: brightness(0.95);
+  :global(.dag-graph .node rect:hover) {
+    filter: brightness(0.9);
   }
 
-  .edgePath path {
+  :global(.dag-graph .edgePath path) {
     stroke: #555;
-    stroke-width: 1.5px;
+    stroke-width: 2px;
     fill: none;
+  }
+
+  :global(.dag-graph .edgePath marker path) {
+    fill: #555;
   }
 
   .empty {
