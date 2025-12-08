@@ -3,6 +3,7 @@
   import { listFeatures, getFeature } from '../lib/api';
   import { sseClient } from '../lib/sse';
   import type { Feature, FeatureDetail, Job } from '../lib/types';
+  import DagGraph from './DagGraph.svelte';
 
   type Props = {
     onSelectJob?: (job: Job) => void;
@@ -13,6 +14,7 @@
   let features = $state<Feature[]>([]);
   let expandedFeature = $state<string | null>(null);
   let featureDetails = $state<Map<string, FeatureDetail>>(new Map());
+  let viewModes = $state<Record<string, 'dag' | 'list'>>({});
   let loading = $state(true);
   let error = $state<string | null>(null);
 
@@ -47,6 +49,14 @@
     }
   }
 
+  function setViewMode(featureId: string, mode: 'dag' | 'list') {
+    viewModes = { ...viewModes, [featureId]: mode };
+  }
+
+  function getViewMode(featureId: string): 'dag' | 'list' {
+    return viewModes[featureId] ?? 'dag';
+  }
+
   function getStatusCount(feature: Feature, status: string): number {
     return feature.status_counts[status] || 0;
   }
@@ -76,6 +86,14 @@
       cancelled: '#757575',
     };
     return colors[status] || '#666';
+  }
+
+  function handleNodeClick(featureId: string, jobId: string) {
+    const detail = featureDetails.get(featureId);
+    const job = detail?.jobs.find((item) => item.id === jobId);
+    if (job) {
+      onSelectJob?.(job);
+    }
   }
 
   onMount(() => {
@@ -146,18 +164,49 @@
             <div class="feature-details">
               {#if featureDetails.has(feature.feature_id)}
                 {@const detail = featureDetails.get(feature.feature_id)!}
-                <div class="jobs-list">
-                  {#each detail.jobs as job (job.id)}
-                    <div class="job-item" onclick={() => onSelectJob?.(job)} role="button" tabindex="0">
-                      <span class="job-status" style="background-color: {getStatusColor(job.status)}">
-                        {job.status}
-                      </span>
-                      <span class="job-part">{job.feature_part || 'N/A'}</span>
-                      <span class="job-goal">{job.spec_json.prompt}</span>
-                      <span class="job-time">{formatDate(job.created_at)}</span>
-                    </div>
-                  {/each}
+                {@const currentViewMode = getViewMode(feature.feature_id)}
+                <div class="view-toggle" role="tablist" aria-label="View mode toggle">
+                  <button
+                    type="button"
+                    class="toggle-button"
+                    class:active={currentViewMode === 'dag'}
+                    role="tab"
+                    aria-selected={currentViewMode === 'dag'}
+                    onclick={() => setViewMode(feature.feature_id, 'dag')}
+                  >
+                    DAGグラフ
+                  </button>
+                  <button
+                    type="button"
+                    class="toggle-button"
+                    class:active={currentViewMode === 'list'}
+                    role="tab"
+                    aria-selected={currentViewMode === 'list'}
+                    onclick={() => setViewMode(feature.feature_id, 'list')}
+                  >
+                    リスト
+                  </button>
                 </div>
+
+                {#if currentViewMode === 'dag'}
+                  <DagGraph
+                    jobs={detail.jobs}
+                    onNodeClick={(jobId) => handleNodeClick(feature.feature_id, jobId)}
+                  />
+                {:else}
+                  <div class="jobs-list">
+                    {#each detail.jobs as job (job.id)}
+                      <div class="job-item" onclick={() => onSelectJob?.(job)} role="button" tabindex="0">
+                        <span class="job-status" style="background-color: {getStatusColor(job.status)}">
+                          {job.status}
+                        </span>
+                        <span class="job-part">{job.feature_part || 'N/A'}</span>
+                        <span class="job-goal">{job.spec_json.prompt}</span>
+                        <span class="job-time">{formatDate(job.created_at)}</span>
+                      </div>
+                    {/each}
+                  </div>
+                {/if}
               {:else}
                 <p class="loading-details">Loading details...</p>
               {/if}
@@ -296,6 +345,39 @@
     border-top: 1px solid #ddd;
     padding: 1rem;
     background: #fafafa;
+  }
+
+  .view-toggle {
+    display: inline-flex;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    background: #f4f6fb;
+    border: 1px solid #dce3f0;
+    border-radius: 10px;
+    margin-bottom: 1rem;
+  }
+
+  .toggle-button {
+    padding: 0.45rem 0.9rem;
+    border: none;
+    background: transparent;
+    color: #4a5568;
+    font-size: 0.9rem;
+    font-weight: 700;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+  }
+
+  .toggle-button:hover {
+    background: #e4edfb;
+    color: #1f7aee;
+  }
+
+  .toggle-button.active {
+    background: #1f7aee;
+    color: #fff;
+    box-shadow: 0 4px 10px rgba(31, 122, 238, 0.25);
   }
 
   .loading-details {

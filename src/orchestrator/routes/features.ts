@@ -69,6 +69,7 @@ router.get('/:feature_id', (req, res) => {
         branch_name: job.branch_name,
         created_at: job.created_at,
         updated_at: job.updated_at,
+        depends_on: job.depends_on,
         spec_json: { prompt: promptPreview },
       };
     });

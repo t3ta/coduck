@@ -20,6 +20,7 @@ export interface Job {
   result_summary: unknown | null;
   conversation_id: string | null;
   resume_requested?: boolean;
+  depends_on?: string[];
   created_at: string;
   updated_at: string;
 }
