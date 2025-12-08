@@ -15,8 +15,7 @@ const createJobPayload = (overrides: Record<string, unknown> = {}) => ({
   worktree_path: '/tmp/worktree-http',
   worker_type: 'codex',
   spec_json: {
-    goal: 'Verify route behaviour',
-    context_files: ['README.md'],
+    prompt: 'Verify route behaviour\nContext: README.md',
   },
   ...overrides,
 });

@@ -121,7 +121,7 @@
 
   async function handleDeleteJob(event: MouseEvent, job: Job) {
     event.stopPropagation();
-    if (!confirm(`ジョブ "${job.spec_json.goal.slice(0, 50)}..." を削除しますか？`)) {
+    if (!confirm(`ジョブ "${job.spec_json.prompt.slice(0, 50)}..." を削除しますか？`)) {
       return;
     }
     try {
@@ -250,7 +250,7 @@
               </button>
             </div>
           </div>
-          <div class="job-goal">{job.spec_json.goal}</div>
+          <div class="job-goal">{job.spec_json.prompt}</div>
           <div class="job-meta">
             <span>Branch: {job.branch_name}</span>
             {#if job.feature_id}

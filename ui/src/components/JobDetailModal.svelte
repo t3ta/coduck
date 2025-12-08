@@ -156,47 +156,9 @@
           </section>
 
           <section class="section">
-            <h3>目標 (Goal)</h3>
-            <p class="goal">{job.spec_json.goal}</p>
+            <h3>プロンプト</h3>
+            <pre class="prompt">{job.spec_json.prompt}</pre>
           </section>
-
-          <section class="section">
-            <h3>コンテキストファイル</h3>
-            <ul class="context-files">
-              {#each job.spec_json.context_files as file}
-                <li><code>{file}</code></li>
-              {/each}
-            </ul>
-          </section>
-
-          {#if job.spec_json.notes}
-            <section class="section">
-              <h3>ノート</h3>
-              <pre class="notes">{job.spec_json.notes}</pre>
-            </section>
-          {/if}
-
-          {#if job.spec_json.constraints && job.spec_json.constraints.length > 0}
-            <section class="section">
-              <h3>制約条件</h3>
-              <ul>
-                {#each job.spec_json.constraints as constraint}
-                  <li>{constraint}</li>
-                {/each}
-              </ul>
-            </section>
-          {/if}
-
-          {#if job.spec_json.acceptance_criteria && job.spec_json.acceptance_criteria.length > 0}
-            <section class="section">
-              <h3>受け入れ基準</h3>
-              <ul>
-                {#each job.spec_json.acceptance_criteria as criteria}
-                  <li>{criteria}</li>
-                {/each}
-              </ul>
-            </section>
-          {/if}
 
           {#if job.conversation_id}
             <section class="section">
@@ -433,44 +395,16 @@
     white-space: nowrap;
   }
 
-  .goal {
+  .prompt {
     margin: 0;
     padding: 1rem;
     background: #f5f5f5;
     border-left: 4px solid #667eea;
     border-radius: 4px;
     line-height: 1.6;
-  }
-
-  .context-files {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .context-files li {
-    padding: 0.5rem;
-    background: #f5f5f5;
-    border-radius: 4px;
-  }
-
-  .context-files code {
-    font-size: 0.875rem;
-  }
-
-  .notes {
-    margin: 0;
-    padding: 1rem;
-    background: #f5f5f5;
-    border-radius: 4px;
-    overflow-x: auto;
     white-space: pre-wrap;
     word-wrap: break-word;
     font-size: 0.875rem;
-    line-height: 1.6;
   }
 
   .json {

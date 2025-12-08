@@ -13,8 +13,7 @@ const createJobResponse = (overrides: Partial<Job> = {}): Job => ({
   feature_id: null,
   feature_part: null,
   spec_json: {
-    goal: 'Implement feature',
-    context_files: ['src/index.ts'],
+    prompt: 'Implement feature\nContext: src/index.ts',
   },
   result_summary: null,
   conversation_id: null,
@@ -39,9 +38,7 @@ describe('OrchestratorClient', () => {
     });
 
     const job = await client.enqueueCodexJob({
-      goal: 'Implement feature',
-      context_files: ['src/index.ts'],
-      notes: 'Be mindful of edge cases',
+      prompt: 'Implement feature\nContext: src/index.ts\nNotes: Be mindful of edge cases',
       base_ref: 'origin/dev',
     });
 
@@ -56,9 +53,7 @@ describe('OrchestratorClient', () => {
     expect(body.repo_url).toBe('https://example.com/repo.git');
     expect(body.base_ref).toBe('origin/dev');
     expect(body.spec_json).toMatchObject({
-      goal: 'Implement feature',
-      context_files: ['src/index.ts'],
-      notes: 'Be mindful of edge cases',
+      prompt: 'Implement feature\nContext: src/index.ts\nNotes: Be mindful of edge cases',
     });
   });
 
@@ -147,8 +142,7 @@ describe('OrchestratorClient', () => {
       });
 
       const job = await client.enqueueCodexJob({
-        goal: 'Add analytics tracking',
-        context_files: ['src/analytics.ts'],
+        prompt: 'Add analytics tracking\nContext: src/analytics.ts',
         feature_id: 'analytics',
         feature_part: 'tracking',
       });
@@ -177,8 +171,7 @@ describe('OrchestratorClient', () => {
       });
 
       const job = await client.enqueueCodexJob({
-        goal: 'Regular task',
-        context_files: ['src/file.ts'],
+        prompt: 'Regular task\nContext: src/file.ts',
       });
 
       expect(job.feature_id).toBeNull();
@@ -244,8 +237,7 @@ describe('OrchestratorClient', () => {
       });
 
       await client.enqueueCodexJob({
-        goal: 'Implement feature',
-        context_files: ['src/index.ts'],
+        prompt: 'Implement feature\nContext: src/index.ts',
         branch_name: 'feature/my-branch',
       });
 
@@ -270,8 +262,7 @@ describe('OrchestratorClient', () => {
       });
 
       await client.enqueueCodexJob({
-        goal: 'Add authentication',
-        context_files: ['src/auth.ts'],
+        prompt: 'Add authentication\nContext: src/auth.ts',
         feature_id: 'user-auth',
       });
 
@@ -295,8 +286,7 @@ describe('OrchestratorClient', () => {
       });
 
       await client.enqueueCodexJob({
-        goal: 'Implement feature',
-        context_files: ['src/index.ts'],
+        prompt: 'Implement feature\nContext: src/index.ts',
       });
 
       const [, init] = fetchMock.mock.calls[0];
@@ -319,8 +309,7 @@ describe('OrchestratorClient', () => {
       });
 
       await client.enqueueCodexJob({
-        goal: 'Add authentication',
-        context_files: ['src/auth.ts'],
+        prompt: 'Add authentication\nContext: src/auth.ts',
         feature_id: 'User Auth?:Test',
       });
 
@@ -344,8 +333,7 @@ describe('OrchestratorClient', () => {
       });
 
       await client.enqueueCodexJob({
-        goal: 'Implement feature',
-        context_files: ['src/index.ts'],
+        prompt: 'Implement feature\nContext: src/index.ts',
         feature_id: '🚀',
       });
 
@@ -369,8 +357,7 @@ describe('OrchestratorClient', () => {
       });
 
       await client.enqueueCodexJob({
-        goal: 'Implement feature',
-        context_files: ['src/index.ts'],
+        prompt: 'Implement feature\nContext: src/index.ts',
         push_mode: 'never',
       });
 
@@ -394,8 +381,7 @@ describe('OrchestratorClient', () => {
       });
 
       await client.enqueueCodexJob({
-        goal: 'Implement feature',
-        context_files: ['src/index.ts'],
+        prompt: 'Implement feature\nContext: src/index.ts',
       });
 
       const [, init] = fetchMock.mock.calls[0];
