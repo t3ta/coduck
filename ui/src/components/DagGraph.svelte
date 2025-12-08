@@ -31,7 +31,8 @@
   }
 
   function computeJobsHash(currentJobs: Job[]): string {
-    return currentJobs.map(j => `${j.id}:${j.status}:${(j.depends_on ?? []).join(',')}`).join('|');
+    const sortedJobs = [...currentJobs].sort((a, b) => a.id.localeCompare(b.id));
+    return sortedJobs.map(j => `${j.id}:${j.status}:${(j.depends_on ?? []).join(',')}`).join('|');
   }
 
   function renderGraph(currentJobs: Job[]) {
@@ -97,7 +98,7 @@
     // Draw edges
     graph.edges().forEach((e) => {
       const edge = graph.edge(e);
-      const points = edge.points;
+      if (!edge.points || edge.points.length === 0) return;
       
       const lineFunction = d3.line<{ x: number; y: number }>()
         .x(d => d.x)
@@ -106,7 +107,7 @@
 
       inner.append('path')
         .attr('class', 'edgePath')
-        .attr('d', lineFunction(points))
+        .attr('d', lineFunction(edge.points))
         .attr('fill', 'none')
         .attr('stroke', '#555')
         .attr('stroke-width', 2)
