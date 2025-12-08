@@ -9,11 +9,6 @@ import type {
 
 const API_BASE = '';
 
-export interface JobDependencies {
-  depends_on: string[];
-  depended_by: string[];
-}
-
 export async function listJobs(params?: {
   status?: string;
   worker_type?: string;
@@ -33,12 +28,6 @@ export async function listJobs(params?: {
 export async function getJob(id: string): Promise<Job> {
   const res = await fetch(`${API_BASE}/jobs/${id}`);
   if (!res.ok) throw new Error(`Failed to fetch job: ${res.statusText}`);
-  return res.json();
-}
-
-export async function getJobDependencies(id: string): Promise<JobDependencies> {
-  const res = await fetch(`${API_BASE}/jobs/${encodeURIComponent(id)}/dependencies`);
-  if (!res.ok) throw new Error(`Failed to fetch job dependencies: ${res.statusText}`);
   return res.json();
 }
 

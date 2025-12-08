@@ -73,20 +73,3 @@ export interface LogEntry {
   text: string;
   timestamp: string;
 }
-
-export interface DagNode {
-  id: string;
-  label: string;
-  status: JobStatus;
-  featurePart: string | null;
-}
-
-export interface DagEdge {
-  source: string;
-  target: string;
-}
-
-export interface DagData {
-  nodes: DagNode[];
-  edges: DagEdge[];
-}

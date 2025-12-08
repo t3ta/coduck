@@ -1,8 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import * as d3 from 'd3';
-  // @ts-ignore - dagre-d3 ships without complete TypeScript types
-  import * as dagreD3 from 'dagre-d3';
+  import { graphlib, layout } from '@dagrejs/dagre';
   import type { Job, JobStatus } from '../lib/types';
 
   type Props = {
@@ -16,6 +15,7 @@
   let svgEl: SVGSVGElement | null = null;
   let innerEl: SVGGElement | null = null;
   let mounted = $state(false);
+  let previousJobsHash = $state('');
 
   const statusColors: Record<JobStatus, string> = {
     pending: '#9e9e9e',
@@ -30,17 +30,12 @@
     return job.feature_part?.trim() || `#${job.id.slice(0, 8)}`;
   }
 
+  function computeJobsHash(currentJobs: Job[]): string {
+    return currentJobs.map(j => `${j.id}:${j.status}:${(j.depends_on ?? []).join(',')}`).join('|');
+  }
+
   function renderGraph(currentJobs: Job[]) {
     if (!svgEl || !innerEl || !mounted) return;
-
-    // dagre-d3 graphlib access (handles both ESM default and namespace imports)
-    const graphlib = (dagreD3 as any).graphlib || (dagreD3 as any).default?.graphlib;
-    const renderFn = (dagreD3 as any).render || (dagreD3 as any).default?.render;
-
-    if (!graphlib || !renderFn) {
-      console.error('dagre-d3 not properly loaded', dagreD3);
-      return;
-    }
 
     const graph = new graphlib.Graph({ compound: false }).setGraph({
       rankdir: 'TB',
@@ -52,16 +47,14 @@
     graph.setDefaultEdgeLabel(() => ({}));
 
     const seenIds = new Set(currentJobs.map((job) => job.id));
+    const jobMap = new Map(currentJobs.map(j => [j.id, j]));
 
     for (const job of currentJobs) {
-      const color = statusColors[job.status] || '#9e9e9e';
       graph.setNode(job.id, {
         label: labelForJob(job),
-        style: `fill: ${color}; stroke: #2c2c2c; stroke-width: 1.5px;`,
-        labelStyle: 'fill: #fff; font-weight: 600;',
-        rx: 6,
-        ry: 6,
-        padding: 10,
+        width: 120,
+        height: 40,
+        job,
       });
 
       const deps = job.depends_on ?? [];
@@ -70,24 +63,102 @@
           seenIds.add(dep);
           graph.setNode(dep, {
             label: `#${dep.slice(0, 8)}`,
-            style: 'fill: #e0e0e0; stroke: #666; stroke-width: 1.2px;',
-            labelStyle: 'fill: #333; font-weight: 600;',
-            rx: 6,
-            ry: 6,
-            padding: 8,
+            width: 100,
+            height: 35,
+            job: null,
           });
         }
-        graph.setEdge(dep, job.id, { arrowhead: 'vee' });
+        graph.setEdge(dep, job.id);
       }
     }
+
+    layout(graph);
 
     const svg = d3.select(svgEl);
     const inner = d3.select(innerEl);
 
     inner.selectAll('*').remove();
 
-    const render = new renderFn();
-    render(inner as any, graph);
+    // Create arrow marker for edges
+    const defs = svg.select('defs').empty() ? svg.append('defs') : svg.select('defs');
+    defs.selectAll('marker').remove();
+    defs.append('marker')
+      .attr('id', 'arrowhead')
+      .attr('viewBox', '0 0 10 10')
+      .attr('refX', 9)
+      .attr('refY', 5)
+      .attr('markerWidth', 6)
+      .attr('markerHeight', 6)
+      .attr('orient', 'auto')
+      .append('path')
+      .attr('d', 'M 0 0 L 10 5 L 0 10 z')
+      .attr('fill', '#555');
+
+    // Draw edges
+    graph.edges().forEach((e) => {
+      const edge = graph.edge(e);
+      const points = edge.points;
+      
+      const lineFunction = d3.line<{ x: number; y: number }>()
+        .x(d => d.x)
+        .y(d => d.y)
+        .curve(d3.curveBasis);
+
+      inner.append('path')
+        .attr('class', 'edgePath')
+        .attr('d', lineFunction(points))
+        .attr('fill', 'none')
+        .attr('stroke', '#555')
+        .attr('stroke-width', 2)
+        .attr('marker-end', 'url(#arrowhead)');
+    });
+
+    // Draw nodes
+    graph.nodes().forEach((nodeId) => {
+      const node = graph.node(nodeId);
+      const job = node.job as Job | null;
+      const color = job ? (statusColors[job.status] || '#9e9e9e') : '#e0e0e0';
+      const textColor = job ? '#fff' : '#333';
+      
+      const g = inner.append('g')
+        .attr('class', 'node')
+        .attr('id', nodeId)
+        .attr('transform', `translate(${node.x - node.width / 2}, ${node.y - node.height / 2})`)
+        .attr('tabindex', '0')
+        .attr('role', 'button')
+        .attr('aria-label', job ? `Job ${labelForJob(job)}, status: ${job.status}` : `Job ${nodeId.slice(0, 8)}`);
+
+      g.append('rect')
+        .attr('width', node.width)
+        .attr('height', node.height)
+        .attr('rx', 6)
+        .attr('ry', 6)
+        .attr('fill', color)
+        .attr('stroke', job ? '#2c2c2c' : '#666')
+        .attr('stroke-width', job ? 1.5 : 1.2);
+
+      g.append('text')
+        .attr('x', node.width / 2)
+        .attr('y', node.height / 2)
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .attr('fill', textColor)
+        .attr('font-weight', 600)
+        .text(node.label);
+
+      // Add click and keyboard event handlers
+      g.on('click', (event) => {
+        event.preventDefault();
+        if (onNodeClick) onNodeClick(nodeId);
+      });
+
+      g.on('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          if (onNodeClick) onNodeClick(nodeId);
+        }
+      });
+    });
 
     const graphLabel = graph.graph();
     const graphWidth = (graphLabel.width ?? 0) + (graphLabel.marginx ?? 24) * 2;
@@ -105,11 +176,7 @@
         inner.attr('transform', event.transform);
       });
 
-    svg.call(
-      zoom as unknown as (
-        selection: d3.Selection<SVGSVGElement, unknown, null, undefined>
-      ) => void
-    );
+    svg.call(zoom);
 
     const initialScale = containerEl
       ? Math.min((containerEl.clientWidth - 40) / graphWidth, 1)
@@ -118,19 +185,7 @@
       Math.max(((containerEl?.clientWidth ?? minWidth) - graphWidth * initialScale) / 2, 0) + 20;
     const initialTranslateY = 20;
 
-    svg.call(
-      zoom.transform as unknown as (
-        selection: d3.Selection<SVGSVGElement, unknown, null, undefined>,
-        transform: d3.ZoomTransform
-      ) => void,
-      d3.zoomIdentity.translate(initialTranslateX, initialTranslateY).scale(initialScale || 1)
-    );
-
-    inner.selectAll<SVGGElement, string>('g.node').on('click', (_event, id) => {
-      if (typeof id === 'string') {
-        onNodeClick?.(id);
-      }
-    });
+    svg.call(zoom.transform, d3.zoomIdentity.translate(initialTranslateX, initialTranslateY).scale(initialScale || 1));
   }
 
   onMount(() => {
@@ -142,7 +197,11 @@
 
   $effect(() => {
     if (mounted && jobs.length > 0) {
-      renderGraph(jobs);
+      const newHash = computeJobsHash(jobs);
+      if (newHash !== previousJobsHash) {
+        previousJobsHash = newHash;
+        renderGraph(jobs);
+      }
     }
   });
 </script>
@@ -151,7 +210,9 @@
   {#if jobs.length === 0}
     <p class="empty">No jobs to display</p>
   {:else}
-    <svg bind:this={svgEl} aria-label="DAG graph">
+    <svg bind:this={svgEl} role="img" aria-labelledby="dag-graph-title dag-graph-desc">
+      <title id="dag-graph-title">Directed Acyclic Graph of jobs</title>
+      <desc id="dag-graph-desc">Interactive visualization of job dependencies. Use Tab to navigate nodes and Enter or Space to activate.</desc>
       <g bind:this={innerEl}></g>
     </svg>
   {/if}
