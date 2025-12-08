@@ -164,14 +164,14 @@
             <div class="feature-details">
               {#if featureDetails.has(feature.feature_id)}
                 {@const detail = featureDetails.get(feature.feature_id)!}
-                {@const viewMode = getViewMode(feature.feature_id)}
-                <div class="view-toggle" role="tablist" aria-label="表示モード切替">
+                {@const currentViewMode = getViewMode(feature.feature_id)}
+                <div class="view-toggle" role="tablist" aria-label="View mode toggle">
                   <button
                     type="button"
                     class="toggle-button"
-                    class:active={viewMode === 'dag'}
+                    class:active={currentViewMode === 'dag'}
                     role="tab"
-                    aria-selected={viewMode === 'dag'}
+                    aria-selected={currentViewMode === 'dag'}
                     onclick={() => setViewMode(feature.feature_id, 'dag')}
                   >
                     DAGグラフ
@@ -179,16 +179,16 @@
                   <button
                     type="button"
                     class="toggle-button"
-                    class:active={viewMode === 'list'}
+                    class:active={currentViewMode === 'list'}
                     role="tab"
-                    aria-selected={viewMode === 'list'}
+                    aria-selected={currentViewMode === 'list'}
                     onclick={() => setViewMode(feature.feature_id, 'list')}
                   >
                     リスト
                   </button>
                 </div>
 
-                {#if viewMode === 'dag'}
+                {#if currentViewMode === 'dag'}
                   <DagGraph
                     jobs={detail.jobs}
                     onNodeClick={(jobId) => handleNodeClick(feature.feature_id, jobId)}
