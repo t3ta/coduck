@@ -2,11 +2,7 @@
 export type JobStatus = 'pending' | 'running' | 'awaiting_input' | 'done' | 'failed' | 'cancelled';
 
 export interface SpecJson {
-  goal: string;
-  context_files: string[];
-  notes?: string;
-  constraints?: string[];
-  acceptance_criteria?: string[];
+  prompt: string;
 }
 
 export interface Job {

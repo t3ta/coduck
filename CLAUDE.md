@@ -86,7 +86,7 @@ Claude Code → MCP Tool → Orchestrator API → SQLite
 - `src/shared/types.ts`: 全コンポーネント共通の型定義
 - `src/shared/config.ts`: 環境変数ベースの設定管理
 - `Job`インターフェース: データベーススキーマと1:1対応
-- `SpecJson`: ジョブの目標と制約を定義
+- `SpecJson`: `prompt`フィールドのみを持つシンプルな型（Codexに直接渡されるプロンプト）
 
 ## 重要な制約と回避策
 
@@ -97,7 +97,7 @@ Claude Code → MCP Tool → Orchestrator API → SQLite
 **回避策**: `continue_codex_job`は以下の方法で会話継続を実装:
 
 1. 新しい`codex`セッションを開始
-2. 元のgoalと過去の会話履歴をプロンプトに含める
+2. 元のpromptと過去の会話履歴を新しいプロンプトに含める
 3. 新しい`conversationId`を`~/.codex/sessions/`から抽出
 
 詳細は[docs/codex-mcp-limitations.md](docs/codex-mcp-limitations.md)を参照。
@@ -142,7 +142,7 @@ Claude Code → MCP Tool → Orchestrator API → SQLite
 
 3. **どちらも未指定の場合**: 自動生成（従来の挙動）
    ```typescript
-   // codex/<goal-slug>-<timestamp>-<random> 形式
+   // codex/<prompt-first-line-slug>-<timestamp>-<random> 形式
    // 例: "codex/add-user-auth-lm3k9-a1b2c3d4"
    ```
 
@@ -165,7 +165,9 @@ Jobの`push_mode`フィールドでリモートへのpush挙動を制御でき�
 ```typescript
 // 同じfeatureに複数Jobを積む
 enqueue_codex_job({
-  goal: "バックエンドAPIを実装",
+  prompt: `Goal: バックエンドAPIを実装
+Context: src/api/routes.ts, src/db/schema.ts
+Environment: WSL2 Ubuntu, bash only`,
   branch_name: "feature/navy-comment",
   push_mode: "never",
   feature_id: "navy-comment",
@@ -173,7 +175,9 @@ enqueue_codex_job({
 });
 
 enqueue_codex_job({
-  goal: "フロントエンドUIを実装",
+  prompt: `Goal: フロントエンドUIを実装
+Context: src/components/CommentForm.tsx
+Environment: WSL2 Ubuntu, bash only`,
   branch_name: "feature/navy-comment",
   push_mode: "never",
   feature_id: "navy-comment",
@@ -203,8 +207,9 @@ MCP Tool経由で以下のように指定:
 
 ```typescript
 enqueue_codex_job({
-  goal: "プロジェクト構造を分析してREADMEに記載",
-  context_files: ["src/", "package.json"],
+  prompt: `Goal: プロジェクト構造を分析してREADMEに記載
+Context: src/, package.json
+Environment: WSL2 Ubuntu, bash only`,
   use_worktree: false, // ワークツリーなしモード
 });
 ```
@@ -241,22 +246,25 @@ enqueue_codex_job({
 ```typescript
 // 例1: コードベースの調査（ファイル変更なし）
 enqueue_codex_job({
-  goal: "このプロジェクトの依存関係を分析して、セキュリティリスクをレポート",
-  context_files: ["package.json", "package-lock.json"],
+  prompt: `Goal: このプロジェクトの依存関係を分析して、セキュリティリスクをレポート
+Context: package.json, package-lock.json
+Environment: WSL2 Ubuntu, bash only`,
   use_worktree: false,
 });
 
 // 例2: 小規模な変更（手動でコミット）
 enqueue_codex_job({
-  goal: "ESLintの警告を修正",
-  context_files: ["src/**/*.ts"],
+  prompt: `Goal: ESLintの警告を修正
+Context: src/**/*.ts
+Environment: WSL2 Ubuntu, bash only`,
   use_worktree: false,
 });
 
 // 例3: ドキュメント生成
 enqueue_codex_job({
-  goal: "API仕様書をOpenAPI形式で生成",
-  context_files: ["src/api/"],
+  prompt: `Goal: API仕様書をOpenAPI形式で生成
+Context: src/api/
+Environment: WSL2 Ubuntu, bash only`,
   use_worktree: false,
 });
 ```
@@ -272,21 +280,24 @@ enqueue_codex_job({
 ```typescript
 // ステップ1: 基盤となるジョブを作成
 const baseJob = await enqueue_codex_job({
-  goal: "データベーススキーマを作成",
-  context_files: ["src/db/schema.ts"],
+  prompt: `Goal: データベーススキーマを作成
+Context: src/db/schema.ts
+Environment: WSL2 Ubuntu, bash only`,
 });
 
 // ステップ2: 依存ジョブを作成（baseJobが完了するまで待機）
 const apiJob = await enqueue_codex_job({
-  goal: "RESTful APIエンドポイントを実装",
-  context_files: ["src/api/routes.ts"],
+  prompt: `Goal: RESTful APIエンドポイントを実装
+Context: src/api/routes.ts
+Environment: WSL2 Ubuntu, bash only`,
   depends_on: [baseJob.id], // 依存関係を指定
 });
 
 // ステップ3: 複数の依存関係も指定可能
 const testJob = await enqueue_codex_job({
-  goal: "統合テストを追加",
-  context_files: ["tests/integration/"],
+  prompt: `Goal: 統合テストを追加
+Context: tests/integration/
+Environment: WSL2 Ubuntu, bash only`,
   depends_on: [baseJob.id, apiJob.id], // 両方が完了するまで待機
 });
 ```
@@ -334,8 +345,9 @@ const testJob = await enqueue_codex_job({
 ```typescript
 // 依存関係付きでジョブを作成
 enqueue_codex_job({
-  goal: "機能Bを実装",
-  context_files: ["src/feature-b.ts"],
+  prompt: `Goal: 機能Bを実装
+Context: src/feature-b.ts
+Environment: WSL2 Ubuntu, bash only`,
   depends_on: ["<job-a-uuid>"],
   feature_id: "multi-step-feature",
   feature_part: "step-2"
@@ -371,16 +383,18 @@ CREATE TABLE job_dependencies (
 
 // Phase 1: データモデル
 const modelJob = await enqueue_codex_job({
-  goal: "Userモデルとスキーマを定義",
-  context_files: ["src/models/user.ts", "src/db/schema.ts"],
+  prompt: `Goal: Userモデルとスキーマを定義
+Context: src/models/user.ts, src/db/schema.ts
+Environment: WSL2 Ubuntu, bash only`,
   feature_id: "user-auth",
   feature_part: "models",
 });
 
 // Phase 2: バックエンドAPI（モデルに依存）
 const apiJob = await enqueue_codex_job({
-  goal: "User認証APIを実装",
-  context_files: ["src/api/auth.ts"],
+  prompt: `Goal: User認証APIを実装
+Context: src/api/auth.ts
+Environment: WSL2 Ubuntu, bash only`,
   depends_on: [modelJob.id],
   feature_id: "user-auth",
   feature_part: "api",
@@ -388,8 +402,9 @@ const apiJob = await enqueue_codex_job({
 
 // Phase 3: フロントエンド（APIに依存）
 const uiJob = await enqueue_codex_job({
-  goal: "ログインUIコンポーネントを作成",
-  context_files: ["src/components/LoginForm.tsx"],
+  prompt: `Goal: ログインUIコンポーネントを作成
+Context: src/components/LoginForm.tsx
+Environment: WSL2 Ubuntu, bash only`,
   depends_on: [apiJob.id],
   feature_id: "user-auth",
   feature_part: "ui",
@@ -397,8 +412,9 @@ const uiJob = await enqueue_codex_job({
 
 // Phase 4: テスト（全てに依存）
 const testJob = await enqueue_codex_job({
-  goal: "E2E認証テストを追加",
-  context_files: ["tests/e2e/auth.test.ts"],
+  prompt: `Goal: E2E認証テストを追加
+Context: tests/e2e/auth.test.ts
+Environment: WSL2 Ubuntu, bash only`,
   depends_on: [modelJob.id, apiJob.id, uiJob.id],
   feature_id: "user-auth",
   feature_part: "tests",
@@ -410,6 +426,41 @@ const testJob = await enqueue_codex_job({
 // 3. apiJob 完了後、uiJob が実行される
 // 4. 全て完了後、testJob が実行される
 ```
+
+## プロンプト設計ガイドライン
+
+`enqueue_codex_job`の`prompt`フィールドには、Codexに直接渡すプロンプトを自由形式で記述します。以下の情報を含めることを推奨します：
+
+### 必須情報
+- **Goal**: 達成したいタスクの明確な説明
+- **Context**: 関連するファイル・ディレクトリのパス
+- **Environment**: OS、シェル、制約（例: WSL2環境ではPowerShellを使わない）
+
+### 推奨フォーマット
+```
+Goal: [タスクの説明]
+Context: [ファイルパス1], [ファイルパス2], ...
+Environment: [OS情報], [シェル], [制約]
+Constraints: [追加の制約があれば]
+```
+
+### 例
+```typescript
+enqueue_codex_job({
+  prompt: `Goal: ユーザー認証APIを実装
+Context: src/api/auth.ts, src/models/user.ts, src/db/schema.ts
+Environment: WSL2 Ubuntu, bash only, no PowerShell
+Constraints:
+- 既存のデータベーススキーマに従う
+- JWT認証を使用
+- テストを含める`,
+});
+```
+
+### 注意点
+- `prompt`はそのままCodexに渡されます（フォーマット変換なし）
+- 呼び出し側で環境情報を明示することで、Codexが適切なコマンドを生成できます
+- 長いプロンプトでも問題ありませんが、最初の行がブランチ名の自動生成に使われます
 
 ## MCP Server登録
 

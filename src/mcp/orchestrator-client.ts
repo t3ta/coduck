@@ -70,9 +70,7 @@ const extractErrorMessage = (data: unknown): string | undefined => {
 };
 
 export interface EnqueueCodexJobArgs {
-  goal: string;
-  context_files: string[];
-  notes?: string;
+  prompt: string;
   base_ref?: string;
   branch_name?: string;
   feature_id?: string;
@@ -126,9 +124,7 @@ export class OrchestratorClient {
   async enqueueCodexJob(args: EnqueueCodexJobArgs): Promise<Job> {
     const baseRef = args.base_ref?.trim() || DEFAULT_BASE_REF;
     const specPayload: SpecJson = {
-      goal: args.goal,
-      context_files: args.context_files,
-      ...(args.notes ? { notes: args.notes } : {}),
+      prompt: args.prompt,
     };
 
     // No-worktree mode: use current working directory
@@ -153,9 +149,9 @@ export class OrchestratorClient {
           .replace(/[^a-z0-9]+/g, '-')
           .replace(/^-+|-+$/g, '');
         // Fall back to auto-generated branch if sanitized feature_id is empty
-        branchName = sanitizedFeatureId ? `feature/${sanitizedFeatureId}` : this.generateJobMetadata(args.goal).branchName;
+        branchName = sanitizedFeatureId ? `feature/${sanitizedFeatureId}` : this.generateJobMetadata(args.prompt).branchName;
       } else {
-        branchName = this.generateJobMetadata(args.goal).branchName;
+        branchName = this.generateJobMetadata(args.prompt).branchName;
       }
 
       repoUrl = this.repoUrl;
@@ -297,9 +293,11 @@ export class OrchestratorClient {
     return path.resolve(this.worktreeBaseDir, worktreeDir);
   }
 
-  private generateJobMetadata(goal: string): JobMetadata {
-    const normalizedGoal = goal.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-    const slug = normalizedGoal.slice(0, 32);
+  private generateJobMetadata(prompt: string): JobMetadata {
+    // Extract first line or first 100 chars for branch name generation
+    const firstLine = prompt.split('\n')[0].slice(0, 100);
+    const normalizedPrompt = firstLine.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    const slug = normalizedPrompt.slice(0, 32);
     const timestamp = Date.now().toString(36);
     const randomSuffix = randomUUID().slice(0, 8);
     const branchName = slug ? `codex/${slug}-${timestamp}-${randomSuffix}` : `codex/task-${timestamp}-${randomSuffix}`;

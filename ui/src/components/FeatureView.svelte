@@ -153,7 +153,7 @@
                         {job.status}
                       </span>
                       <span class="job-part">{job.feature_part || 'N/A'}</span>
-                      <span class="job-goal">{job.spec_json.goal}</span>
+                      <span class="job-goal">{job.spec_json.prompt}</span>
                       <span class="job-time">{formatDate(job.created_at)}</span>
                     </div>
                   {/each}

@@ -32,7 +32,7 @@ class NotificationManager {
       ? '✅ ジョブが完了しました'
       : '❌ ジョブが失敗しました';
 
-    const body = `${job.spec_json.goal.slice(0, 100)}${job.spec_json.goal.length > 100 ? '...' : ''}`;
+    const body = `${job.spec_json.prompt.slice(0, 100)}${job.spec_json.prompt.length > 100 ? '...' : ''}`;
 
     const notification = new Notification(title, {
       body,

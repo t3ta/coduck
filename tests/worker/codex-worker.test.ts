@@ -15,8 +15,7 @@ const createJob = (overrides: Partial<Job> = {}): Job => ({
   worker_type: 'codex',
   status: 'pending',
   spec_json: {
-    goal: 'Do something',
-    context_files: [],
+    prompt: 'Do something',
   },
   result_summary: null,
   conversation_id: null,
@@ -52,7 +51,7 @@ describe('CodexWorker handleJob', () => {
     await (worker as any).handleJob(createJob());
 
     expect(createWorktree.mock.calls.length).toBe(1);
-    expect(executeCodex.mock.calls[0][1]).toMatchObject({ goal: 'Do something' });
+    expect(executeCodex.mock.calls[0][1]).toMatchObject({ prompt: 'Do something' });
     expect(completeJob.mock.calls.length).toBe(1);
     const [jobId, status, summary, conversationId] = completeJob.mock.calls[0];
     expect(jobId).toBe('job-1');

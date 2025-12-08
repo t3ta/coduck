@@ -11,11 +11,7 @@ import { getDb } from '../db.js';
 const jobStatusEnum = z.enum(['pending', 'running', 'awaiting_input', 'done', 'failed', 'cancelled']);
 
 const specJsonSchema: z.ZodType<SpecJson> = z.object({
-  goal: z.string().min(1),
-  context_files: z.array(z.string()),
-  notes: z.string().optional(),
-  constraints: z.array(z.string()).optional(),
-  acceptance_criteria: z.array(z.string()).optional(),
+  prompt: z.string().min(1),
 });
 
 // status is controlled by the orchestrator and always starts at 'pending'

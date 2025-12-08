@@ -21,8 +21,7 @@ const createJobPayload = (overrides: Partial<JobModule['CreateJobInput']> = {}):
   worker_type: 'codex',
   status: 'pending',
   spec_json: {
-    goal: 'Test job',
-    context_files: ['README.md'],
+    prompt: 'Test job\nContext: README.md',
   },
   result_summary: null,
   conversation_id: null,

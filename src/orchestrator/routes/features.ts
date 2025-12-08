@@ -57,15 +57,21 @@ router.get('/:feature_id', (req, res) => {
       return res.status(404).json({ error: 'Feature not found' });
     }
 
-    const jobSummaries = jobs.map((job) => ({
-      id: job.id,
-      status: job.status,
-      feature_part: job.feature_part,
-      branch_name: job.branch_name,
-      created_at: job.created_at,
-      updated_at: job.updated_at,
-      spec_json: { goal: job.spec_json.goal },
-    }));
+    const jobSummaries = jobs.map((job) => {
+      // Truncate prompt for display (first 200 chars)
+      const promptPreview = job.spec_json.prompt.length > 200
+        ? job.spec_json.prompt.slice(0, 200) + '...'
+        : job.spec_json.prompt;
+      return {
+        id: job.id,
+        status: job.status,
+        feature_part: job.feature_part,
+        branch_name: job.branch_name,
+        created_at: job.created_at,
+        updated_at: job.updated_at,
+        spec_json: { prompt: promptPreview },
+      };
+    });
 
     res.json({
       feature_id,

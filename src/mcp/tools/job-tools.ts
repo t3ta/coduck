@@ -20,9 +20,7 @@ type _JobStatusCoverageCheck = Exclude<JobStatus, (typeof JOB_STATUSES)[number]>
 const PROTECTED_STATUSES = new Set<JobStatus>(['running', 'awaiting_input']);
 
 const enqueueCodexJobSchema = z.object({
-  goal: z.string().min(1, 'A goal is required for every job.'),
-  context_files: z.array(z.string().min(1, 'Context file paths cannot be empty.')).min(1, 'Provide at least one context file.'),
-  notes: z.string().min(1).optional(),
+  prompt: z.string().min(1, 'A prompt is required for every job.'),
   base_ref: z.string().min(1).default('origin/main'),
   branch_name: z.string().min(1, 'Branch name cannot be empty.').optional(),
   feature_id: z.string().min(1, 'Feature ID cannot be empty.').optional(),
@@ -74,10 +72,10 @@ const parseResultSummary = (value: string | null): Record<string, unknown> => {
 };
 
 const formatJob = (job: Job): string => {
-  const specDetails = [`Goal: ${job.spec_json.goal}`, `Context files: ${job.spec_json.context_files.join(', ') || 'n/a'}`];
-  if (job.spec_json.notes) {
-    specDetails.push(`Notes: ${job.spec_json.notes}`);
-  }
+  // Truncate prompt for display (first 200 chars)
+  const promptPreview = job.spec_json.prompt.length > 200
+    ? job.spec_json.prompt.slice(0, 200) + '...'
+    : job.spec_json.prompt;
 
   return [
     `ID: ${job.id}`,
@@ -89,7 +87,7 @@ const formatJob = (job: Job): string => {
     `Worktree: ${job.worktree_path}`,
     `Conversation: ${job.conversation_id ?? 'n/a'}`,
     `Result: ${job.result_summary ?? 'n/a'}`,
-    ...specDetails,
+    `Prompt: ${promptPreview}`,
     `Created: ${job.created_at}`,
     `Updated: ${job.updated_at}`,
   ].join('\n');
@@ -159,13 +157,25 @@ const buildConversationHistory = (job: Job): string => {
 export const registerJobTools = (server: McpServer, orchestratorClient = new OrchestratorClient()): void => {
   server.registerTool('enqueue_codex_job', {
     title: 'Enqueue Codex Job',
-    description: 'Enqueue a new Codex worker job via the orchestrator (optionally tagging it with feature metadata). Supports job dependencies via depends_on parameter.',
+    description: `Enqueue a new Codex worker job via the orchestrator.
+
+The prompt should include:
+- Goal: What you want Codex to accomplish
+- Context files: Which files/directories are relevant
+- Environment: OS, shell, constraints (e.g., "WSL2 Ubuntu, bash only, no PowerShell")
+- Any additional instructions or constraints
+
+Example prompt:
+"Goal: Implement user authentication API
+Context: src/api/auth.ts, src/models/user.ts
+Environment: WSL2 Ubuntu, use bash commands only
+Constraints: Use existing database schema, follow project code style"
+
+Supports job dependencies via depends_on parameter.`,
     inputSchema: enqueueCodexJobSchema,
   }, async (args) => {
     const job = await orchestratorClient.enqueueCodexJob({
-      goal: args.goal.trim(),
-      context_files: args.context_files.map((file) => file.trim()),
-      notes: args.notes?.trim() || undefined,
+      prompt: args.prompt.trim(),
       base_ref: args.base_ref?.trim() || undefined,
       branch_name: args.branch_name?.trim() || undefined,
       feature_id: args.feature_id?.trim() || undefined,
@@ -320,13 +330,9 @@ export const registerJobTools = (server: McpServer, orchestratorClient = new Orc
 
     // Create full prompt with context
     const fullPrompt = [
-      '# Original Goal',
-      job.spec_json.goal,
+      '# Original Prompt',
+      job.spec_json.prompt,
       '',
-      '# Context Files',
-      job.spec_json.context_files.map((file) => `- ${file}`).join('\n'),
-      '',
-      job.spec_json.notes ? `# Notes\n${job.spec_json.notes}\n` : '',
       '# Previous Conversation',
       conversationHistory,
       '',

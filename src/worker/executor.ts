@@ -16,26 +16,8 @@ export interface ExecutionResult {
 }
 
 const buildPrompt = (spec: SpecJson): string => {
-  const sections: string[] = [];
-
-  sections.push(`# Goal\n${spec.goal}`);
-  if (spec.context_files.length) {
-    sections.push(`# Context Files\n${spec.context_files.map((file) => `- ${file}`).join('\n')}`);
-  }
-  if (spec.notes) {
-    sections.push(`# Notes\n${spec.notes}`);
-  }
-  if (spec.constraints?.length) {
-    sections.push(`# Constraints\n${spec.constraints.map((line) => `- ${line}`).join('\n')}`);
-  }
-  if (spec.acceptance_criteria?.length) {
-    sections.push(`# Acceptance Criteria\n${spec.acceptance_criteria.map((line) => `- ${line}`).join('\n')}`);
-  }
-
-  sections.push('# Instructions\nPlease complete the task described above within this repository.');
-
-  return sections.join('\n\n');
-};
+  return spec.prompt;
+};;
 
 /**
  * Execute Codex for the first time (new session).
