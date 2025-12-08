@@ -20,6 +20,7 @@ export interface Job {
   result_summary: unknown | null;
   conversation_id: string | null;
   resume_requested?: boolean;
+  depends_on?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -71,4 +72,21 @@ export interface LogEntry {
   stream: 'stdout' | 'stderr';
   text: string;
   timestamp: string;
+}
+
+export interface DagNode {
+  id: string;
+  label: string;
+  status: JobStatus;
+  featurePart: string | null;
+}
+
+export interface DagEdge {
+  source: string;
+  target: string;
+}
+
+export interface DagData {
+  nodes: DagNode[];
+  edges: DagEdge[];
 }
