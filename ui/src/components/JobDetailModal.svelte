@@ -54,14 +54,6 @@
     }
   }
 
-  function handleBackdropKeyDown(event: KeyboardEvent) {
-    if (event.target !== event.currentTarget) return;
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      onClose();
-    }
-  }
-
   function formatDate(dateString: string): string {
     const date = new Date(dateString);
     return date.toLocaleString('ja-JP', {
@@ -92,10 +84,7 @@
 {#if job}
   <div
     class="modal-backdrop"
-    role="button"
-    tabindex="0"
     onclick={handleBackdropClick}
-    onkeydown={handleBackdropKeyDown}
   >
     <div class="modal">
       <div class="modal-header">
