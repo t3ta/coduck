@@ -77,6 +77,30 @@ const formatJob = (job: Job): string => {
     ? job.spec_json.prompt.slice(0, 200) + '...'
     : job.spec_json.prompt;
 
+  // Parse result_summary and extract key fields for display
+  const summary = parseResultSummary(job.result_summary);
+  const resultParts: string[] = [];
+
+  if (summary.error) {
+    resultParts.push(`Error: ${summary.error}`);
+  } else if (summary.message) {
+    resultParts.push(String(summary.message));
+  }
+
+  const details: string[] = [];
+  if (summary.commit_hash) details.push(`commit: ${String(summary.commit_hash).slice(0, 7)}`);
+  if (summary.pushed === true) details.push('pushed');
+  if (summary.pushed === false) details.push('not pushed');
+  if (summary.git_skipped === true) details.push('git skipped');
+  if (summary.tests_passed === true) details.push('tests: passed');
+  if (summary.tests_passed === false) details.push('tests: failed');
+
+  if (details.length > 0) {
+    resultParts.push(`(${details.join(', ')})`);
+  }
+
+  const resultDisplay = resultParts.length > 0 ? resultParts.join(' ') : 'n/a';
+
   return [
     `ID: ${job.id}`,
     `Status: ${job.status}`,
@@ -86,7 +110,7 @@ const formatJob = (job: Job): string => {
     `Branch: ${job.branch_name}`,
     `Worktree: ${job.worktree_path}`,
     `Conversation: ${job.conversation_id ?? 'n/a'}`,
-    `Result: ${job.result_summary ?? 'n/a'}`,
+    `Result: ${resultDisplay}`,
     `Prompt: ${promptPreview}`,
     `Created: ${job.created_at}`,
     `Updated: ${job.updated_at}`,
@@ -152,6 +176,22 @@ const buildConversationHistory = (job: Job): string => {
   return continuations
     .map(({ prompt, response }) => `User: ${prompt}\n\nAssistant: ${response}`)
     .join('\n\n---\n\n');
+};
+
+export const TRUNCATE_THRESHOLD = 500;
+export const TRUNCATE_HEAD = 250;
+export const TRUNCATE_TAIL = 200;
+export const TRUNCATE_SEPARATOR = '\n...\n';
+
+export const truncateResponseText = (text: string): string => {
+  if (text.length <= TRUNCATE_THRESHOLD) {
+    return text;
+  }
+
+  // Truncate: take first TRUNCATE_HEAD and last TRUNCATE_TAIL characters, with separator in between
+  const head = text.slice(0, TRUNCATE_HEAD);
+  const tail = text.slice(-TRUNCATE_TAIL);
+  return `${head}${TRUNCATE_SEPARATOR}${tail}`;
 };
 
 export const registerJobTools = (server: McpServer, orchestratorClient = new OrchestratorClient()): void => {
@@ -384,10 +424,13 @@ Supports job dependencies via depends_on parameter.`,
       conversation_id: nextConversationId,
     });
 
+    // Truncate response text if it's too long
+    const displayResponse = responseText ? truncateResponseText(responseText) : '(no text output)';
+
     const textSummary = [
       `Continued Codex job ${jobId}`,
       `Prompt:\n${prompt}`,
-      responseText ? `Response:\n${responseText}` : 'Response: (no text output)',
+      `Response:\n${displayResponse}`,
       `New conversationId: ${nextConversationId ?? 'n/a'}`,
       `New status: ${newStatus}`,
     ].join('\n\n');
