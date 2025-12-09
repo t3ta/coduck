@@ -77,6 +77,30 @@ const formatJob = (job: Job): string => {
     ? job.spec_json.prompt.slice(0, 200) + '...'
     : job.spec_json.prompt;
 
+  // Parse result_summary and extract key fields for display
+  const summary = parseResultSummary(job.result_summary);
+  const resultParts: string[] = [];
+
+  if (summary.error) {
+    resultParts.push(`Error: ${summary.error}`);
+  } else if (summary.message) {
+    resultParts.push(String(summary.message));
+  }
+
+  const details: string[] = [];
+  if (summary.commit_hash) details.push(`commit: ${String(summary.commit_hash).slice(0, 7)}`);
+  if (summary.pushed === true) details.push('pushed');
+  if (summary.pushed === false && summary.commit_hash) details.push('not pushed');
+  if (summary.git_skipped === true) details.push('git skipped');
+  if (summary.tests_passed === true) details.push('tests: passed');
+  if (summary.tests_passed === false) details.push('tests: failed');
+
+  if (details.length > 0) {
+    resultParts.push(`(${details.join(', ')})`);
+  }
+
+  const resultDisplay = resultParts.length > 0 ? resultParts.join(' ') : 'n/a';
+
   return [
     `ID: ${job.id}`,
     `Status: ${job.status}`,
@@ -86,7 +110,7 @@ const formatJob = (job: Job): string => {
     `Branch: ${job.branch_name}`,
     `Worktree: ${job.worktree_path}`,
     `Conversation: ${job.conversation_id ?? 'n/a'}`,
-    `Result: ${job.result_summary ?? 'n/a'}`,
+    `Result: ${resultDisplay}`,
     `Prompt: ${promptPreview}`,
     `Created: ${job.created_at}`,
     `Updated: ${job.updated_at}`,
@@ -152,6 +176,34 @@ const buildConversationHistory = (job: Job): string => {
   return continuations
     .map(({ prompt, response }) => `User: ${prompt}\n\nAssistant: ${response}`)
     .join('\n\n---\n\n');
+};
+
+const summarizeResponseText = async (text: string, worktreePath: string): Promise<string> => {
+  const SUMMARY_THRESHOLD = 500;
+
+  if (text.length <= SUMMARY_THRESHOLD) {
+    return text;
+  }
+
+  try {
+    const summaryPrompt = `以下のテキストを200文字以内で要約してください。技術的な要点を保ってください：\n\n${text}`;
+    const result = await callCodex({
+      prompt: summaryPrompt,
+      worktreePath,
+      sandbox: 'read-only',
+      approvalPolicy: 'never',
+    });
+
+    const summary = collectTextContent(result);
+    if (summary && summary.trim()) {
+      return summary.trim();
+    }
+  } catch (error) {
+    console.warn('Failed to summarize response text:', error);
+  }
+
+  // Fallback: truncate
+  return text.slice(0, SUMMARY_THRESHOLD) + '...';
 };
 
 export const registerJobTools = (server: McpServer, orchestratorClient = new OrchestratorClient()): void => {
@@ -384,10 +436,13 @@ Supports job dependencies via depends_on parameter.`,
       conversation_id: nextConversationId,
     });
 
+    // Summarize response text if it's too long
+    const displayResponse = responseText ? await summarizeResponseText(responseText, job.worktree_path) : '(no text output)';
+
     const textSummary = [
       `Continued Codex job ${jobId}`,
       `Prompt:\n${prompt}`,
-      responseText ? `Response:\n${responseText}` : 'Response: (no text output)',
+      `Response:\n${displayResponse}`,
       `New conversationId: ${nextConversationId ?? 'n/a'}`,
       `New status: ${newStatus}`,
     ].join('\n\n');
