@@ -125,7 +125,10 @@
 <svelte:window onkeydown={handleEscape} />
 
 {#if job}
-  <div class="modal-backdrop" onclick={handleBackdropClick} role="button" tabindex="-1">
+  <div
+    class="modal-backdrop"
+    onclick={handleBackdropClick}
+  >
     <div class="modal">
       <div class="modal-header">
         <div class="header-top">

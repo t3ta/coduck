@@ -57,6 +57,14 @@
     onSelectJob?.(job);
   }
 
+  function handleJobKeyDown(event: KeyboardEvent, job: Job) {
+    if (event.target !== event.currentTarget) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      handleJobClick(job);
+    }
+  }
+
   function toggleSelect(event: MouseEvent, jobId: string) {
     event.stopPropagation();
     const newSet = new Set(selectedIds);
@@ -223,7 +231,14 @@
   {:else}
     <div class="jobs">
       {#each filteredJobs as job (job.id)}
-        <div class="job-card" class:selected={selectedIds.has(job.id)} onclick={() => handleJobClick(job)}>
+        <div
+          class="job-card"
+          class:selected={selectedIds.has(job.id)}
+          role="button"
+          tabindex="0"
+          onclick={() => handleJobClick(job)}
+          onkeydown={(event) => handleJobKeyDown(event, job)}
+        >
           <div class="job-header">
             <div class="job-header-left">
               <input

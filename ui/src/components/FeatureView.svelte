@@ -96,6 +96,14 @@
     }
   }
 
+  function handleJobKeyDown(event: KeyboardEvent, job: Job) {
+    if (event.target !== event.currentTarget) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onSelectJob?.(job);
+    }
+  }
+
   onMount(() => {
     fetchFeatures();
     sseClient.connect();
@@ -196,7 +204,13 @@
                 {:else}
                   <div class="jobs-list">
                     {#each detail.jobs as job (job.id)}
-                      <div class="job-item" onclick={() => onSelectJob?.(job)} role="button" tabindex="0">
+                      <div
+                        class="job-item"
+                        role="button"
+                        tabindex="0"
+                        onclick={() => onSelectJob?.(job)}
+                        onkeydown={(event) => handleJobKeyDown(event, job)}
+                      >
                         <span class="job-status" style="background-color: {getStatusColor(job.status)}">
                           {job.status}
                         </span>

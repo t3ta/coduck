@@ -12,8 +12,8 @@
   let { jobs = [], onNodeClick = undefined }: Props = $props();
 
   let containerEl: HTMLDivElement | null = null;
-  let svgEl: SVGSVGElement | null = null;
-  let innerEl: SVGGElement | null = null;
+  let svgEl = $state<SVGSVGElement | null>(null);
+  let innerEl = $state<SVGGElement | null>(null);
   let mounted = $state(false);
   let previousJobsHash = $state('');
 
