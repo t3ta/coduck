@@ -54,6 +54,14 @@
     }
   }
 
+  function handleBackdropKeyDown(event: KeyboardEvent) {
+    if (event.target !== event.currentTarget) return;
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onClose();
+    }
+  }
+
   function formatDate(dateString: string): string {
     const date = new Date(dateString);
     return date.toLocaleString('ja-JP', {
@@ -82,7 +90,13 @@
 <svelte:window onkeydown={handleEscape} />
 
 {#if job}
-  <div class="modal-backdrop" onclick={handleBackdropClick} role="button" tabindex="-1">
+  <div
+    class="modal-backdrop"
+    role="button"
+    tabindex="0"
+    onclick={handleBackdropClick}
+    onkeydown={handleBackdropKeyDown}
+  >
     <div class="modal">
       <div class="modal-header">
         <div class="header-top">
@@ -416,16 +430,6 @@
     overflow-x: auto;
     font-size: 0.875rem;
     line-height: 1.5;
-  }
-
-  ul {
-    margin: 0;
-    padding-left: 1.5rem;
-  }
-
-  ul li {
-    line-height: 1.6;
-    margin-bottom: 0.25rem;
   }
 
   .resume-description {
