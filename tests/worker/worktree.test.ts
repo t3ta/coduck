@@ -41,7 +41,7 @@ describe('worktree', () => {
   });
 
   describe('createWorktree', () => {
-    it('新規ブランチでワークツリーを作成する', async () => {
+    it('creates worktree with new branch', async () => {
       const worktreePath = path.join(worktreesDir, 'feature-new');
       const branchName = 'feature-new';
 
@@ -63,12 +63,12 @@ describe('worktree', () => {
       await result.cleanup();
     });
 
-    it('既存ワークツリーを再利用する（preserveChanges=false）', async () => {
+    it('reuses existing worktree (preserveChanges=false)', async () => {
       const worktreePath = path.join(worktreesDir, 'feature-reuse');
       const branchName = 'feature-reuse';
 
       // Create worktree first time
-      const result1 = await createWorktree(repoPath, 'HEAD', branchName, worktreePath);
+      await createWorktree(repoPath, 'HEAD', branchName, worktreePath);
 
       // Make some changes
       await fs.writeFile(path.join(worktreePath, 'test.txt'), 'test content');
@@ -90,7 +90,7 @@ describe('worktree', () => {
       await result2.cleanup();
     });
 
-    it('既存ワークツリーを再利用する（preserveChanges=true）', async () => {
+    it('reuses existing worktree (preserveChanges=true)', async () => {
       const worktreePath = path.join(worktreesDir, 'feature-preserve');
       const branchName = 'feature-preserve';
 
@@ -113,7 +113,7 @@ describe('worktree', () => {
       await result.cleanup();
     });
 
-    it('存在しないリポジトリパスでエラーをスロー', async () => {
+    it('throws error for non-existent repository path', async () => {
       const nonexistentPath = path.join(tempDir, 'nonexistent-repo');
       const worktreePath = path.join(worktreesDir, 'feature-error');
 
@@ -130,12 +130,12 @@ describe('worktree', () => {
   });
 
   describe('removeWorktree', () => {
-    it('存在するワークツリーを削除', async () => {
+    it('removes existing worktree', async () => {
       const worktreePath = path.join(worktreesDir, 'feature-remove');
       const branchName = 'feature-remove';
 
       // Create worktree
-      const result = await createWorktree(repoPath, 'HEAD', branchName, worktreePath);
+      await createWorktree(repoPath, 'HEAD', branchName, worktreePath);
 
       // Verify it exists
       await fs.access(worktreePath);
@@ -153,7 +153,7 @@ describe('worktree', () => {
       expect(errorThrown).toBe(true);
     });
 
-    it('存在しないワークツリーの削除はエラーなく完了', async () => {
+    it('completes without error when removing non-existent worktree', async () => {
       const nonexistentPath = path.join(worktreesDir, 'nonexistent-worktree');
 
       // Should not throw

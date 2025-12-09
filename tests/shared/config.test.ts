@@ -2,7 +2,7 @@ import { describe, it, expect } from '../utils/jest-lite.js';
 import { appConfig } from '../../src/shared/config.js';
 
 describe('appConfig', () => {
-  it('デフォルト値を持つ', () => {
+  it('has default values', () => {
     // デフォルト値または環境変数から設定された値を確認
     expect(typeof appConfig.worktreeBaseDir).toBe('string');
     expect(typeof appConfig.codexCliPath).toBe('string');
@@ -14,7 +14,7 @@ describe('appConfig', () => {
     expect(typeof appConfig.codexMcpTimeoutMs).toBe('number');
   });
 
-  it('数値設定が有効な範囲内である', () => {
+  it('numeric settings are within valid range', () => {
     // ポート番号は1-65535の範囲
     expect(appConfig.orchestratorPort).toBeTruthy();
     expect(appConfig.orchestratorPort > 0).toBe(true);
@@ -30,18 +30,21 @@ describe('appConfig', () => {
     expect(appConfig.codexMcpTimeoutMs > 0).toBe(true);
   });
 
-  it('orchestratorUrlが適切な形式である', () => {
+  it('orchestratorUrl has proper format', () => {
     expect(appConfig.orchestratorUrl).toContain('http');
-    expect(appConfig.orchestratorUrl.startsWith('http://')).toBe(true);
+    expect(
+      appConfig.orchestratorUrl.startsWith('http://') ||
+      appConfig.orchestratorUrl.startsWith('https://')
+    ).toBe(true);
   });
 
-  it('パスの設定が空でない', () => {
+  it('path settings are not empty', () => {
     expect(appConfig.worktreeBaseDir.length > 0).toBe(true);
     expect(appConfig.codexCliPath.length > 0).toBe(true);
     expect(appConfig.gitPath.length > 0).toBe(true);
   });
 
-  it('オプション設定が正しい型である', () => {
+  it('optional settings have correct types', () => {
     // codexReasoningSummary と codexReasoningFormat はオプション
     if (appConfig.codexReasoningSummary !== undefined) {
       expect(typeof appConfig.codexReasoningSummary).toBe('string');
