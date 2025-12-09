@@ -90,7 +90,7 @@ const formatJob = (job: Job): string => {
   const details: string[] = [];
   if (summary.commit_hash) details.push(`commit: ${String(summary.commit_hash).slice(0, 7)}`);
   if (summary.pushed === true) details.push('pushed');
-  if (summary.pushed === false && summary.commit_hash) details.push('not pushed');
+  if (summary.pushed === false) details.push('not pushed');
   if (summary.git_skipped === true) details.push('git skipped');
   if (summary.tests_passed === true) details.push('tests: passed');
   if (summary.tests_passed === false) details.push('tests: failed');
@@ -178,32 +178,20 @@ const buildConversationHistory = (job: Job): string => {
     .join('\n\n---\n\n');
 };
 
-const summarizeResponseText = async (text: string, worktreePath: string): Promise<string> => {
-  const SUMMARY_THRESHOLD = 500;
+export const TRUNCATE_THRESHOLD = 500;
+export const TRUNCATE_HEAD = 250;
+export const TRUNCATE_TAIL = 200;
+export const TRUNCATE_SEPARATOR = '\n...\n';
 
-  if (text.length <= SUMMARY_THRESHOLD) {
+export const truncateResponseText = (text: string): string => {
+  if (text.length <= TRUNCATE_THRESHOLD) {
     return text;
   }
 
-  try {
-    const summaryPrompt = `以下のテキストを200文字以内で要約してください。技術的な要点を保ってください：\n\n${text}`;
-    const result = await callCodex({
-      prompt: summaryPrompt,
-      worktreePath,
-      sandbox: 'read-only',
-      approvalPolicy: 'never',
-    });
-
-    const summary = collectTextContent(result);
-    if (summary && summary.trim()) {
-      return summary.trim();
-    }
-  } catch (error) {
-    console.warn('Failed to summarize response text:', error);
-  }
-
-  // Fallback: truncate
-  return text.slice(0, SUMMARY_THRESHOLD) + '...';
+  // Truncate: take first TRUNCATE_HEAD and last TRUNCATE_TAIL characters, with separator in between
+  const head = text.slice(0, TRUNCATE_HEAD);
+  const tail = text.slice(-TRUNCATE_TAIL);
+  return `${head}${TRUNCATE_SEPARATOR}${tail}`;
 };
 
 export const registerJobTools = (server: McpServer, orchestratorClient = new OrchestratorClient()): void => {
@@ -436,8 +424,8 @@ Supports job dependencies via depends_on parameter.`,
       conversation_id: nextConversationId,
     });
 
-    // Summarize response text if it's too long
-    const displayResponse = responseText ? await summarizeResponseText(responseText, job.worktree_path) : '(no text output)';
+    // Truncate response text if it's too long
+    const displayResponse = responseText ? truncateResponseText(responseText) : '(no text output)';
 
     const textSummary = [
       `Continued Codex job ${jobId}`,
