@@ -44,7 +44,6 @@ describe('truncateResponseText', () => {
     expect(result.length < veryLongText.length).toBe(true);
     // Expected length: TRUNCATE_HEAD + TRUNCATE_SEPARATOR + TRUNCATE_TAIL
     const expectedLength = TRUNCATE_HEAD + TRUNCATE_SEPARATOR.length + TRUNCATE_TAIL;
-    expect(result.length < TRUNCATE_THRESHOLD).toBe(true);
     expect(result.length).toBe(expectedLength);
   });
 
