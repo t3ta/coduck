@@ -3,7 +3,7 @@ import { z } from 'zod';
 import path from 'node:path';
 
 import type { JobStatus, SpecJson } from '../../shared/types.js';
-import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJobStatus, isWorktreeInUse, setJobDependencies, getJobDependencies, getDependentJobs, checkCircularDependency, addJobLog, getJobLogs, sanitizeResultSummaryValue, touchJobUpdatedAt, resumeJob } from '../models/job.js';
+import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJobStatus, isWorktreeInUse, setJobDependencies, getJobDependencies, getDependentJobs, checkCircularDependency, addJobLog, getJobLogs, sanitizeResultSummaryValue, touchJobUpdatedAt, resumeJob, requestJobContinuation } from '../models/job.js';
 import { removeWorktree } from '../../worker/worktree.js';
 import { orchestratorEvents } from '../events.js';
 import { getDb } from '../db.js';
@@ -66,6 +66,10 @@ const cleanupJobsSchema = z.object({
   maxAgeDays: z.number().int().nonnegative().optional(),
 });
 
+const continueJobSchema = z.object({
+  prompt: z.string().min(1),
+});
+
 type LogEntry = { stream: 'stdout' | 'stderr'; text: string; timestamp?: string };
 
 const toFilterValue = (value: unknown): string | undefined => {
@@ -126,6 +130,27 @@ const serializeJsonText = (value: unknown): string | null => {
     return null;
   }
   return typeof value === 'string' ? value : JSON.stringify(value);
+};
+
+const parseResultSummary = (value: unknown): Record<string, unknown> => {
+  if (!value) return {};
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (parsed && typeof parsed === 'object') {
+        return { ...(parsed as Record<string, unknown>) };
+      }
+    } catch {
+      return { previous_summary: value };
+    }
+  }
+
+  if (typeof value === 'object') {
+    return { ...(value as Record<string, unknown>) };
+  }
+
+  return {};
 };
 
 const router = Router();
@@ -489,6 +514,50 @@ router.post('/:id/complete', (req, res, next) => {
 
     orchestratorEvents.emit({ type: 'job_updated', data: stripLogsFromJob(job) });
     res.status(200).json(stripLogsFromJob(job));
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/:id/continue', (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const body = continueJobSchema.parse(req.body);
+    const job = getJob(id);
+
+    if (!job) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    if (job.status !== 'failed') {
+      return res.status(400).json({ error: `Job is not in failed status (current: ${job.status})` });
+    }
+
+    if (!job.conversation_id) {
+      return res.status(400).json({ error: 'Job has no conversation_id to continue' });
+    }
+
+    const summary = parseResultSummary(job.result_summary);
+    const timedOutValue = summary?.codex && typeof summary.codex === 'object'
+      ? (summary.codex as Record<string, unknown>).timed_out
+      : undefined;
+    const timedOut = timedOutValue === true || timedOutValue === 'true';
+
+    if (timedOut) {
+      return res.status(400).json({ error: 'Job timed out; use /jobs/:id/resume instead' });
+    }
+
+    const prompt = body.prompt.trim();
+    const requestedAt = new Date().toISOString();
+    const updatedSummary = sanitizeResultSummaryValue({
+      ...summary,
+      continue_prompt: prompt,
+      continue_requested_at: requestedAt,
+    });
+
+    const updatedJob = requestJobContinuation(id, updatedSummary);
+    orchestratorEvents.emit({ type: 'job_updated', data: stripLogsFromJob(updatedJob) });
+    res.status(200).json({ success: true });
   } catch (error) {
     next(error);
   }

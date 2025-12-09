@@ -49,6 +49,16 @@ export async function resumeJob(id: string): Promise<{ success: boolean }> {
   return res.json();
 }
 
+export async function continueJob(id: string, prompt: string): Promise<{ success: boolean }> {
+  const res = await fetch(`${API_BASE}/jobs/${id}/continue`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt }),
+  });
+  if (!res.ok) throw new Error(`Failed to continue job: ${res.statusText}`);
+  return res.json();
+}
+
 export async function listFeatures(): Promise<Feature[]> {
   const res = await fetch(`${API_BASE}/features`);
   if (!res.ok) throw new Error(`Failed to fetch features: ${res.statusText}`);

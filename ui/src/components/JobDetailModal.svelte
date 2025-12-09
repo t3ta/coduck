@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Job } from '../lib/types';
-  import { resumeJob } from '../lib/api';
+  import { continueJob, resumeJob } from '../lib/api';
   import LogViewer from './LogViewer.svelte';
 
   type Props = {
@@ -14,6 +14,9 @@
   let activeTab = $state<TabType>('details');
   let resuming = $state(false);
   let resumeError = $state<string | null>(null);
+  let continuePrompt = $state('');
+  let continuing = $state(false);
+  let continueError = $state<string | null>(null);
 
   // Check if job is resumable (failed + timed_out + has conversation_id)
   function isResumable(job: Job | null): boolean {
@@ -23,6 +26,18 @@
         ? JSON.parse(job.result_summary)
         : job.result_summary;
       return summary?.codex?.timed_out === true;
+    } catch {
+      return false;
+    }
+  }
+
+  function isContinuable(job: Job | null): boolean {
+    if (!job || job.status !== 'failed' || !job.conversation_id) return false;
+    try {
+      const summary = typeof job.result_summary === 'string'
+        ? JSON.parse(job.result_summary)
+        : job.result_summary;
+      return summary?.codex?.timed_out !== true;
     } catch {
       return false;
     }
@@ -39,6 +54,24 @@
       resumeError = err instanceof Error ? err.message : String(err);
     } finally {
       resuming = false;
+    }
+  }
+
+  async function handleContinue() {
+    if (!job) return;
+    if (!continuePrompt.trim()) {
+      continueError = 'プロンプトを入力してください。';
+      return;
+    }
+    continuing = true;
+    continueError = null;
+    try {
+      await continueJob(job.id, continuePrompt.trim());
+      onClose();
+    } catch (err) {
+      continueError = err instanceof Error ? err.message : String(err);
+    } finally {
+      continuing = false;
     }
   }
 
@@ -180,6 +213,29 @@
                   return job.result_summary;
                 }
               })()}</pre>
+            </section>
+          {/if}
+
+          {#if isContinuable(job)}
+            <section class="section">
+              <h3>ジョブ継続</h3>
+              <p class="continue-description">このジョブは失敗しましたが、追加の指示で継続できます。</p>
+              {#if continueError}
+                <p class="continue-error">{continueError}</p>
+              {/if}
+              <textarea
+                class="continue-textarea"
+                bind:value={continuePrompt}
+                placeholder="継続するための指示を入力"
+                rows="4"
+              ></textarea>
+              <button
+                class="continue-btn"
+                onclick={handleContinue}
+                disabled={continuing || !continuePrompt.trim()}
+              >
+                {continuing ? '送信中...' : '継続実行'}
+              </button>
             </section>
           {/if}
 
@@ -426,6 +482,54 @@
   ul li {
     line-height: 1.6;
     margin-bottom: 0.25rem;
+  }
+
+  .continue-description {
+    margin: 0 0 0.75rem 0;
+    color: #555;
+  }
+
+  .continue-error {
+    margin: 0 0 0.75rem 0;
+    color: #d32f2f;
+    padding: 0.5rem;
+    background: #ffebee;
+    border-radius: 4px;
+  }
+
+  .continue-textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 120px;
+    background: #fafafa;
+  }
+
+  .continue-btn {
+    margin-top: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    background: linear-gradient(135deg, #2196f3 0%, #21cbf3 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .continue-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(33, 150, 243, 0.35);
+  }
+
+  .continue-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .resume-description {
