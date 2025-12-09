@@ -1,22 +1,10 @@
 import { describe, expect, test } from '../utils/jest-lite.js';
-
-// Since truncateResponseText is not exported, we'll test the behavior through
-// the continue_codex_job tool indirectly. For direct unit testing, we recreate
-// the function here with the same logic.
-const truncateResponseText = (text: string): string => {
-  const TRUNCATE_THRESHOLD = 500;
-  const TRUNCATE_HEAD = 250;
-  const TRUNCATE_TAIL = 200;
-
-  if (text.length <= TRUNCATE_THRESHOLD) {
-    return text;
-  }
-
-  // Truncate: take first TRUNCATE_HEAD and last TRUNCATE_TAIL characters, with "..." in between
-  const head = text.slice(0, TRUNCATE_HEAD);
-  const tail = text.slice(-TRUNCATE_TAIL);
-  return `${head}\n...\n${tail}`;
-};
+import {
+  truncateResponseText,
+  TRUNCATE_THRESHOLD,
+  TRUNCATE_HEAD,
+  TRUNCATE_TAIL,
+} from '../../src/mcp/tools/job-tools.js';
 
 describe('truncateResponseText', () => {
   test('should return text unchanged if under threshold', () => {
@@ -26,7 +14,7 @@ describe('truncateResponseText', () => {
   });
 
   test('should return text unchanged if exactly at threshold', () => {
-    const text = 'a'.repeat(500);
+    const text = 'a'.repeat(TRUNCATE_THRESHOLD);
     const result = truncateResponseText(text);
     expect(result).toBe(text);
   });
@@ -35,10 +23,10 @@ describe('truncateResponseText', () => {
     const longText = 'a'.repeat(600);
     const result = truncateResponseText(longText);
     
-    // Should have first 250 chars, "...", then last 200 chars
-    expect(result.startsWith('a'.repeat(250))).toBe(true);
+    // Should have first TRUNCATE_HEAD chars, "...", then last TRUNCATE_TAIL chars
+    expect(result.startsWith('a'.repeat(TRUNCATE_HEAD))).toBe(true);
     expect(result.includes('\n...\n')).toBe(true);
-    expect(result.endsWith('a'.repeat(200))).toBe(true);
+    expect(result.endsWith('a'.repeat(TRUNCATE_TAIL))).toBe(true);
   });
 
   test('should handle very long text', () => {
@@ -53,8 +41,10 @@ describe('truncateResponseText', () => {
     expect(result.includes('\n...\n')).toBe(true);
     // Should be shorter than original
     expect(result.length < veryLongText.length).toBe(true);
-    // Should be approximately 250 + 5 ("\n...\n") + 200 = 455 chars
-    expect(result.length < 500).toBe(true);
+    // Expected length: TRUNCATE_HEAD + '\n...\n' + TRUNCATE_TAIL
+    const expectedLength = TRUNCATE_HEAD + '\n...\n'.length + TRUNCATE_TAIL;
+    expect(result.length < TRUNCATE_THRESHOLD).toBe(true);
+    expect(result.length).toBe(expectedLength);
   });
 
   test('should handle empty text', () => {

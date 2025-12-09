@@ -178,11 +178,11 @@ const buildConversationHistory = (job: Job): string => {
     .join('\n\n---\n\n');
 };
 
-const truncateResponseText = (text: string): string => {
-  const TRUNCATE_THRESHOLD = 500;
-  const TRUNCATE_HEAD = 250;
-  const TRUNCATE_TAIL = 200;
+export const TRUNCATE_THRESHOLD = 500;
+export const TRUNCATE_HEAD = 250;
+export const TRUNCATE_TAIL = 200;
 
+export const truncateResponseText = (text: string): string => {
   if (text.length <= TRUNCATE_THRESHOLD) {
     return text;
   }
