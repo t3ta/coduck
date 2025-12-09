@@ -1,5 +1,7 @@
 # Coduck - Codex Job Orchestrator
 
+[![CI](https://github.com/t3ta/coduck/workflows/CI/badge.svg)](https://github.com/t3ta/coduck/actions)
+
 Job orchestrator with Codex worker and MCP server integration.
 
 ## Features

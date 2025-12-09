@@ -272,7 +272,7 @@ export class CodexWorker {
           prompt: continuationContext.prompt,
           user_prompt: continuationContext.prompt,
           response: responseText,
-          conversation_id: sessionId ?? job.conversation_id,
+          conversation_id: sessionId ?? job.conversation_id ?? undefined,
           at: continuationContext.requestedAt,
         });
         summary.continuations = continuationEntries;
