@@ -4,6 +4,7 @@ import {
   TRUNCATE_THRESHOLD,
   TRUNCATE_HEAD,
   TRUNCATE_TAIL,
+  TRUNCATE_SEPARATOR,
 } from '../../src/mcp/tools/job-tools.js';
 
 describe('truncateResponseText', () => {
@@ -23,9 +24,9 @@ describe('truncateResponseText', () => {
     const longText = 'a'.repeat(600);
     const result = truncateResponseText(longText);
     
-    // Should have first TRUNCATE_HEAD chars, "...", then last TRUNCATE_TAIL chars
+    // Should have first TRUNCATE_HEAD chars, separator, then last TRUNCATE_TAIL chars
     expect(result.startsWith('a'.repeat(TRUNCATE_HEAD))).toBe(true);
-    expect(result.includes('\n...\n')).toBe(true);
+    expect(result.includes(TRUNCATE_SEPARATOR)).toBe(true);
     expect(result.endsWith('a'.repeat(TRUNCATE_TAIL))).toBe(true);
   });
 
@@ -38,11 +39,11 @@ describe('truncateResponseText', () => {
     // Should end with the end
     expect(result.endsWith('This is the end.')).toBe(true);
     // Should have the truncation marker
-    expect(result.includes('\n...\n')).toBe(true);
+    expect(result.includes(TRUNCATE_SEPARATOR)).toBe(true);
     // Should be shorter than original
     expect(result.length < veryLongText.length).toBe(true);
-    // Expected length: TRUNCATE_HEAD + '\n...\n' + TRUNCATE_TAIL
-    const expectedLength = TRUNCATE_HEAD + '\n...\n'.length + TRUNCATE_TAIL;
+    // Expected length: TRUNCATE_HEAD + TRUNCATE_SEPARATOR + TRUNCATE_TAIL
+    const expectedLength = TRUNCATE_HEAD + TRUNCATE_SEPARATOR.length + TRUNCATE_TAIL;
     expect(result.length < TRUNCATE_THRESHOLD).toBe(true);
     expect(result.length).toBe(expectedLength);
   });
@@ -56,7 +57,7 @@ describe('truncateResponseText', () => {
     const textWithNewlines = 'Line 1\nLine 2\n' + 'x'.repeat(500) + '\nLast line';
     const result = truncateResponseText(textWithNewlines);
     
-    expect(result.includes('\n...\n')).toBe(true);
+    expect(result.includes(TRUNCATE_SEPARATOR)).toBe(true);
     expect(result.endsWith('Last line')).toBe(true);
   });
 
@@ -74,6 +75,6 @@ describe('truncateResponseText', () => {
     // Should preserve the end with solution
     expect(result.endsWith('Solution: Check network configuration')).toBe(true);
     // Should have truncation marker
-    expect(result.includes('\n...\n')).toBe(true);
+    expect(result.includes(TRUNCATE_SEPARATOR)).toBe(true);
   });
 });

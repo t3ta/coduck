@@ -181,16 +181,17 @@ const buildConversationHistory = (job: Job): string => {
 export const TRUNCATE_THRESHOLD = 500;
 export const TRUNCATE_HEAD = 250;
 export const TRUNCATE_TAIL = 200;
+export const TRUNCATE_SEPARATOR = '\n...\n';
 
 export const truncateResponseText = (text: string): string => {
   if (text.length <= TRUNCATE_THRESHOLD) {
     return text;
   }
 
-  // Truncate: take first TRUNCATE_HEAD and last TRUNCATE_TAIL characters, with "..." in between
+  // Truncate: take first TRUNCATE_HEAD and last TRUNCATE_TAIL characters, with separator in between
   const head = text.slice(0, TRUNCATE_HEAD);
   const tail = text.slice(-TRUNCATE_TAIL);
-  return `${head}\n...\n${tail}`;
+  return `${head}${TRUNCATE_SEPARATOR}${tail}`;
 };
 
 export const registerJobTools = (server: McpServer, orchestratorClient = new OrchestratorClient()): void => {
