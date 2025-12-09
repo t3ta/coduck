@@ -9,6 +9,7 @@ import type { Job, ResultSummary } from '../shared/types.js';
 import { appConfig } from '../shared/config.js';
 import { createWorktree, WorktreeContext } from './worktree.js';
 import { executeCodex, continueCodex } from './executor.js';
+import { parseResultSummary } from '../shared/result-summary-utils.js';
 
 const execFilePromise = promisify(execFile);
 
@@ -54,6 +55,10 @@ type CodexWorkerDependencies = {
    * Dependency injection hook for tests to stub Codex execution behaviour.
    */
   executeCodex?: typeof executeCodex;
+  /**
+   * Dependency injection hook for tests to stub Codex continuation behaviour.
+   */
+  continueCodex?: typeof continueCodex;
 };
 
 export class CodexWorker {
@@ -66,6 +71,7 @@ export class CodexWorker {
   private readonly fetchImpl: typeof fetch;
   private readonly createWorktreeImpl: typeof createWorktree;
   private readonly executeCodexImpl: typeof executeCodex;
+  private readonly continueCodexImpl: typeof continueCodex;
   private readonly cloneLocks = new Map<string, Promise<string>>();
   private shouldStop = false;
 
@@ -79,6 +85,7 @@ export class CodexWorker {
     this.fetchImpl = deps.fetchImpl ?? fetch;
     this.createWorktreeImpl = deps.createWorktree ?? createWorktree;
     this.executeCodexImpl = deps.executeCodex ?? executeCodex;
+    this.continueCodexImpl = deps.continueCodex ?? continueCodex;
   }
 
   public stop(): void {
@@ -235,16 +242,14 @@ export class CodexWorker {
       let execution;
       if (job.resume_requested && job.conversation_id) {
         console.log(`Job ${job.id}: Resuming timed-out session ${job.conversation_id}`);
-        execution = await continueCodex(workingDirectory, job.conversation_id, '続きを実行して', job.id);
+        execution = await this.continueCodexImpl(workingDirectory, job.conversation_id, '続きを実行して', job.id);
       } else if (continuePrompt && job.conversation_id) {
         const requestedAt = typeof existingSummary.continue_requested_at === 'string'
           ? existingSummary.continue_requested_at
           : new Date().toISOString();
-        const conversationHistory = buildConversationHistory(existingSummary);
-        const fullPrompt = buildFullPrompt(job, continuePrompt, conversationHistory);
         continuationContext = { prompt: continuePrompt, requestedAt };
         console.log(`Job ${job.id}: Continuing failed job ${job.conversation_id} with user-provided prompt.`);
-        execution = await this.executeCodexImpl(workingDirectory, { prompt: fullPrompt }, job.id);
+        execution = await this.continueCodexImpl(workingDirectory, job.conversation_id, continuePrompt, job.id);
       } else if (continuePrompt && !job.conversation_id) {
         console.warn(`Job ${job.id}: continue_prompt present but conversation_id is missing. Running as fresh execution.`);
         execution = await this.executeCodexImpl(workingDirectory, job.spec_json, job.id);
@@ -272,7 +277,7 @@ export class CodexWorker {
           prompt: continuationContext.prompt,
           user_prompt: continuationContext.prompt,
           response: responseText,
-          conversation_id: sessionId ?? job.conversation_id,
+          conversation_id: sessionId ?? job.conversation_id ?? undefined,
           at: continuationContext.requestedAt,
         });
         summary.continuations = continuationEntries;
@@ -524,18 +529,7 @@ const toErrorOutput = (value: unknown): string => {
   return '';
 };
 
-const parseResultSummary = (value: string | null): Record<string, unknown> => {
-  if (!value) return {};
-  try {
-    const parsed = JSON.parse(value);
-    if (parsed && typeof parsed === 'object') {
-      return { ...(parsed as Record<string, unknown>) };
-    }
-  } catch {
-    return { previous_summary: value };
-  }
-  return { previous_summary: value };
-};
+
 
 const extractContinuations = (summary: Record<string, unknown>): Array<Record<string, unknown>> => {
   if (!summary?.continuations || !Array.isArray(summary.continuations)) {
@@ -547,30 +541,4 @@ const extractContinuations = (summary: Record<string, unknown>): Array<Record<st
     .map((item) => ({ ...(item as Record<string, unknown>) }));
 };
 
-const buildConversationHistory = (summary: Record<string, unknown>): string => {
-  const continuations = extractContinuations(summary);
-  if (continuations.length === 0) {
-    return '(No previous conversation)';
-  }
 
-  return continuations
-    .map((entry) => {
-      const userPrompt = String((entry.prompt ?? entry.user_prompt) ?? '(prompt not recorded)');
-      const response = String(entry.response ?? '(response not recorded)');
-      return `User: ${userPrompt}\n\nAssistant: ${response}`;
-    })
-    .join('\n\n---\n\n');
-};
-
-const buildFullPrompt = (job: Job, userPrompt: string, conversationHistory: string): string => {
-  return [
-    '# Original Prompt',
-    job.spec_json.prompt,
-    '',
-    '# Previous Conversation',
-    conversationHistory,
-    '',
-    '# New Request',
-    userPrompt,
-  ].filter((line) => line !== '').join('\n');
-};

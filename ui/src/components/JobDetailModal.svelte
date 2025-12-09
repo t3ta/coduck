@@ -18,6 +18,16 @@
   let continuing = $state(false);
   let continueError = $state<string | null>(null);
 
+  // Reset continuation and resume state when job changes
+  $effect(() => {
+    if (job) {
+      continuePrompt = '';
+      continuing = false;
+      continueError = null;
+      resumeError = null;
+    }
+  });
+
   // Check if job is resumable (failed + timed_out + has conversation_id)
   function isResumable(job: Job | null): boolean {
     if (!job || job.status !== 'failed' || !job.conversation_id) return false;
