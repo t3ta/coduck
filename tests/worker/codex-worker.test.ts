@@ -283,4 +283,189 @@ describe('CodexWorker handleJob', () => {
       expect(summary.pushed).toBe(false);
     });
   });
+
+  describe('Job continuation with continue_prompt', () => {
+    it('continues a failed job with continuePrompt and conversation_id', async () => {
+      const cleanup = jest.fn().mockResolvedValue(undefined);
+      const createWorktree = jest.fn().mockResolvedValue({
+        path: '/tmp/worktree',
+        branchName: 'feature/task',
+        cleanup,
+      });
+      const executeCodex = jest.fn();
+      const continueCodex = jest.fn().mockResolvedValue({ success: true, sessionId: 'conv-continued' });
+      const completeJob = jest.fn().mockResolvedValue(undefined);
+
+      const worker = new CodexWorker({
+        fetchImpl: jest.fn(),
+        createWorktree,
+        executeCodex,
+        continueCodex,
+      });
+
+      (worker as any).ensureRepoPath = jest.fn().mockResolvedValue('/tmp/repo');
+      (worker as any).resolveWorktreePath = jest.fn().mockResolvedValue('/tmp/worktree');
+      (worker as any).commitChanges = jest.fn().mockResolvedValue('def456');
+      (worker as any).pushBranch = jest.fn().mockResolvedValue(undefined);
+      (worker as any).runTests = jest.fn().mockResolvedValue(true);
+      (worker as any).completeJob = completeJob;
+
+      const jobWithContinuation = createJob({
+        conversation_id: 'conv-123',
+        result_summary: JSON.stringify({
+          continue_prompt: 'Fix the bug',
+          continue_requested_at: '2024-01-01T00:00:00.000Z',
+        }),
+      });
+
+      await (worker as any).handleJob(jobWithContinuation);
+
+      expect(continueCodex.mock.calls.length).toBe(1);
+      expect(continueCodex.mock.calls[0][1]).toBe('conv-123');
+      expect(continueCodex.mock.calls[0][2]).toBe('Fix the bug');
+      expect(executeCodex.mock.calls.length).toBe(0);
+      expect(completeJob.mock.calls.length).toBe(1);
+      const [, status, summary, conversationId] = completeJob.mock.calls[0];
+      expect(status).toBe('done');
+      expect(conversationId).toBe('conv-continued');
+      expect(summary.continuations).toBeDefined();
+      expect(summary.continuations.length).toBe(1);
+      expect(summary.continuations[0].prompt).toBe('Fix the bug');
+      expect(cleanup.mock.calls.length).toBe(1);
+    });
+
+    it('falls back to fresh execution when continuePrompt exists but conversation_id is missing', async () => {
+      const cleanup = jest.fn().mockResolvedValue(undefined);
+      const createWorktree = jest.fn().mockResolvedValue({
+        path: '/tmp/worktree',
+        branchName: 'feature/task',
+        cleanup,
+      });
+      const executeCodex = jest.fn().mockResolvedValue({ success: true, sessionId: 'conv-fresh' });
+      const continueCodex = jest.fn();
+      const completeJob = jest.fn().mockResolvedValue(undefined);
+
+      const worker = new CodexWorker({
+        fetchImpl: jest.fn(),
+        createWorktree,
+        executeCodex,
+        continueCodex,
+      });
+
+      (worker as any).ensureRepoPath = jest.fn().mockResolvedValue('/tmp/repo');
+      (worker as any).resolveWorktreePath = jest.fn().mockResolvedValue('/tmp/worktree');
+      (worker as any).commitChanges = jest.fn().mockResolvedValue('ghi789');
+      (worker as any).pushBranch = jest.fn().mockResolvedValue(undefined);
+      (worker as any).runTests = jest.fn().mockResolvedValue(true);
+      (worker as any).completeJob = completeJob;
+
+      const jobWithoutConversationId = createJob({
+        conversation_id: null,
+        result_summary: JSON.stringify({
+          continue_prompt: 'Try again',
+        }),
+      });
+
+      await (worker as any).handleJob(jobWithoutConversationId);
+
+      expect(continueCodex.mock.calls.length).toBe(0);
+      expect(executeCodex.mock.calls.length).toBe(1);
+      expect(executeCodex.mock.calls[0][1]).toMatchObject({ prompt: 'Do something' });
+      expect(completeJob.mock.calls.length).toBe(1);
+      const [, status, , conversationId] = completeJob.mock.calls[0];
+      expect(status).toBe('done');
+      expect(conversationId).toBe('conv-fresh');
+      expect(cleanup.mock.calls.length).toBe(1);
+    });
+
+    it('records continuationContext in result summary when continuing', async () => {
+      const cleanup = jest.fn().mockResolvedValue(undefined);
+      const createWorktree = jest.fn().mockResolvedValue({
+        path: '/tmp/worktree',
+        branchName: 'feature/task',
+        cleanup,
+      });
+      const continueCodex = jest.fn().mockResolvedValue({
+        success: true,
+        sessionId: 'conv-with-context',
+      });
+      const completeJob = jest.fn().mockResolvedValue(undefined);
+
+      const worker = new CodexWorker({
+        fetchImpl: jest.fn(),
+        createWorktree,
+        executeCodex: jest.fn(),
+        continueCodex,
+      });
+
+      (worker as any).ensureRepoPath = jest.fn().mockResolvedValue('/tmp/repo');
+      (worker as any).resolveWorktreePath = jest.fn().mockResolvedValue('/tmp/worktree');
+      (worker as any).commitChanges = jest.fn().mockResolvedValue('jkl012');
+      (worker as any).pushBranch = jest.fn().mockResolvedValue(undefined);
+      (worker as any).runTests = jest.fn().mockResolvedValue(true);
+      (worker as any).completeJob = completeJob;
+
+      const requestedAt = '2024-02-01T12:00:00.000Z';
+      const jobWithContext = createJob({
+        conversation_id: 'conv-456',
+        result_summary: JSON.stringify({
+          continue_prompt: 'Add tests',
+          continue_requested_at: requestedAt,
+        }),
+      });
+
+      await (worker as any).handleJob(jobWithContext);
+
+      expect(completeJob.mock.calls.length).toBe(1);
+      const [, , summary] = completeJob.mock.calls[0];
+      expect(summary.last_continuation).toBeDefined();
+      expect(summary.last_continuation.prompt).toBe('Add tests');
+      expect(summary.last_continuation.at).toBe(requestedAt);
+      expect(summary.continuations).toBeDefined();
+      expect(summary.continuations.length).toBe(1);
+      expect(summary.continuations[0].prompt).toBe('Add tests');
+      expect(summary.continuations[0].at).toBe(requestedAt);
+      expect(summary.continuations[0].response).toBe('Continuation executed.');
+      expect(cleanup.mock.calls.length).toBe(1);
+    });
+
+    it('uses resume_requested for timed-out jobs', async () => {
+      const cleanup = jest.fn().mockResolvedValue(undefined);
+      const createWorktree = jest.fn().mockResolvedValue({
+        path: '/tmp/worktree',
+        branchName: 'feature/task',
+        cleanup,
+      });
+      const continueCodex = jest.fn().mockResolvedValue({ success: true, sessionId: 'conv-resumed' });
+      const completeJob = jest.fn().mockResolvedValue(undefined);
+
+      const worker = new CodexWorker({
+        fetchImpl: jest.fn(),
+        createWorktree,
+        executeCodex: jest.fn(),
+        continueCodex,
+      });
+
+      (worker as any).ensureRepoPath = jest.fn().mockResolvedValue('/tmp/repo');
+      (worker as any).resolveWorktreePath = jest.fn().mockResolvedValue('/tmp/worktree');
+      (worker as any).commitChanges = jest.fn().mockResolvedValue('mno345');
+      (worker as any).pushBranch = jest.fn().mockResolvedValue(undefined);
+      (worker as any).runTests = jest.fn().mockResolvedValue(true);
+      (worker as any).completeJob = completeJob;
+
+      const timedOutJob = createJob({
+        conversation_id: 'conv-timeout',
+        resume_requested: true,
+        result_summary: null,
+      });
+
+      await (worker as any).handleJob(timedOutJob);
+
+      expect(continueCodex.mock.calls.length).toBe(1);
+      expect(continueCodex.mock.calls[0][1]).toBe('conv-timeout');
+      expect(continueCodex.mock.calls[0][2]).toBe('続きを実行して');
+      expect(completeJob.mock.calls.length).toBe(1);
+      expect(cleanup.mock.calls.length).toBe(1);
+    });
+  });
 });
