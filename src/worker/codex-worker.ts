@@ -9,6 +9,7 @@ import type { Job, ResultSummary } from '../shared/types.js';
 import { appConfig } from '../shared/config.js';
 import { createWorktree, WorktreeContext } from './worktree.js';
 import { executeCodex, continueCodex } from './executor.js';
+import { parseResultSummary } from '../shared/result-summary-utils.js';
 
 const execFilePromise = promisify(execFile);
 
@@ -54,6 +55,10 @@ type CodexWorkerDependencies = {
    * Dependency injection hook for tests to stub Codex execution behaviour.
    */
   executeCodex?: typeof executeCodex;
+  /**
+   * Dependency injection hook for tests to stub Codex continuation behaviour.
+   */
+  continueCodex?: typeof continueCodex;
 };
 
 export class CodexWorker {
@@ -66,6 +71,7 @@ export class CodexWorker {
   private readonly fetchImpl: typeof fetch;
   private readonly createWorktreeImpl: typeof createWorktree;
   private readonly executeCodexImpl: typeof executeCodex;
+  private readonly continueCodexImpl: typeof continueCodex;
   private readonly cloneLocks = new Map<string, Promise<string>>();
   private shouldStop = false;
 
@@ -79,6 +85,7 @@ export class CodexWorker {
     this.fetchImpl = deps.fetchImpl ?? fetch;
     this.createWorktreeImpl = deps.createWorktree ?? createWorktree;
     this.executeCodexImpl = deps.executeCodex ?? executeCodex;
+    this.continueCodexImpl = deps.continueCodex ?? continueCodex;
   }
 
   public stop(): void {
@@ -176,6 +183,18 @@ export class CodexWorker {
       branch: job.branch_name,
       base_ref: job.base_ref,
     };
+    const existingSummary = parseResultSummary(job.result_summary);
+    const previousContinuations = extractContinuations(existingSummary);
+    if (previousContinuations.length > 0) {
+      summary.continuations = previousContinuations;
+    }
+    if (typeof existingSummary.continue_requested_at === 'string') {
+      summary.continue_requested_at = existingSummary.continue_requested_at;
+    }
+
+    const continuePrompt = typeof existingSummary.continue_prompt === 'string'
+      ? existingSummary.continue_prompt.trim()
+      : '';
     // worktree_path is only set when the worker owns a managed worktree (safe to clean up).
     // working_directory captures the user-provided path for no-worktree runs so we never delete the wrong directory.
     const useWorktreeMode = job.use_worktree !== false;
@@ -194,7 +213,7 @@ export class CodexWorker {
         const worktreePath = await this.resolveWorktreePath(job.worktree_path);
         summary.worktree_path = worktreePath;
 
-        const preserveWorktree = !!job.resume_requested;
+        const preserveWorktree = !!job.resume_requested || !!continuePrompt;
         worktreeContext = await this.createWorktreeImpl(repoPath, job.base_ref, job.branch_name, worktreePath, {
           preserveChanges: preserveWorktree,
         });
@@ -219,10 +238,21 @@ export class CodexWorker {
       }
 
       // Execute Codex (common for both modes)
+      let continuationContext: { prompt: string; requestedAt: string } | null = null;
       let execution;
       if (job.resume_requested && job.conversation_id) {
         console.log(`Job ${job.id}: Resuming timed-out session ${job.conversation_id}`);
-        execution = await continueCodex(workingDirectory, job.conversation_id, '続きを実行して', job.id);
+        execution = await this.continueCodexImpl(workingDirectory, job.conversation_id, '続きを実行して', job.id);
+      } else if (continuePrompt && job.conversation_id) {
+        const requestedAt = typeof existingSummary.continue_requested_at === 'string'
+          ? existingSummary.continue_requested_at
+          : new Date().toISOString();
+        continuationContext = { prompt: continuePrompt, requestedAt };
+        console.log(`Job ${job.id}: Continuing failed job ${job.conversation_id} with user-provided prompt.`);
+        execution = await this.continueCodexImpl(workingDirectory, job.conversation_id, continuePrompt, job.id);
+      } else if (continuePrompt && !job.conversation_id) {
+        console.warn(`Job ${job.id}: continue_prompt present but conversation_id is missing. Running as fresh execution.`);
+        execution = await this.executeCodexImpl(workingDirectory, job.spec_json, job.id);
       } else {
         execution = await this.executeCodexImpl(workingDirectory, job.spec_json, job.id);
       }
@@ -237,6 +267,23 @@ export class CodexWorker {
         timed_out: execution.timedOut,
       };
       summary.conversation_id = sessionId;
+
+      if (continuationContext) {
+        const continuationEntries = Array.isArray(summary.continuations) ? summary.continuations : [];
+        const responseText = execution.awaitingInput
+          ? 'Codex is awaiting additional input before proceeding.'
+          : execution.error ?? 'Continuation executed.';
+        continuationEntries.push({
+          prompt: continuationContext.prompt,
+          user_prompt: continuationContext.prompt,
+          response: responseText,
+          conversation_id: sessionId ?? job.conversation_id ?? undefined,
+          at: continuationContext.requestedAt,
+        });
+        summary.continuations = continuationEntries;
+        summary.last_continuation = { prompt: continuationContext.prompt, at: continuationContext.requestedAt };
+        summary.continue_requested_at = continuationContext.requestedAt;
+      }
 
       if (execution.awaitingInput) {
         summary.message = 'Codex is awaiting additional input before proceeding.';
@@ -481,3 +528,17 @@ const toErrorOutput = (value: unknown): string => {
   if (value instanceof Buffer) return value.toString('utf8');
   return '';
 };
+
+
+
+const extractContinuations = (summary: Record<string, unknown>): Array<Record<string, unknown>> => {
+  if (!summary?.continuations || !Array.isArray(summary.continuations)) {
+    return [];
+  }
+
+  return summary.continuations
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => ({ ...(item as Record<string, unknown>) }));
+};
+
+

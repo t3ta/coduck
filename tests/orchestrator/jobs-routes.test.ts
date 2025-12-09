@@ -231,4 +231,222 @@ describe('orchestrator job routes', () => {
       expect(job.push_mode).toBe('always');
     });
   });
+
+  describe('POST /jobs/:id/continue', () => {
+    it('successfully continues a failed job with valid prompt and conversation_id', async () => {
+      const payload = createJobPayload();
+      const createResponse = await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const job = (await createResponse.json()) as Job;
+
+      // Set job to failed with conversation_id
+      jobModule.updateJobStatus(
+        job.id,
+        'failed',
+        JSON.stringify({ error: 'Original error' }),
+        undefined,
+        'conv-123'
+      );
+
+      const continueResponse = await fetch(`${baseUrl}/jobs/${job.id}/continue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'Fix the bug' }),
+      });
+
+      expect(continueResponse.status).toBe(200);
+      const result = await continueResponse.json();
+      expect(result.success).toBe(true);
+
+      const updatedJob = jobModule.getJob(job.id);
+      expect(updatedJob?.status).toBe('pending');
+      const summary = JSON.parse(updatedJob?.result_summary || '{}');
+      expect(summary.continue_prompt).toBe('Fix the bug');
+      expect(summary.continue_requested_at).toBeDefined();
+    });
+
+    it('returns 404 when job not found', async () => {
+      const response = await fetch(`${baseUrl}/jobs/nonexistent-id/continue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'Test' }),
+      });
+
+      expect(response.status).toBe(404);
+      const error = await response.json();
+      expect(error.error).toContain('Job not found');
+    });
+
+    it('returns 400 when job status is not failed', async () => {
+      const payload = createJobPayload();
+      const createResponse = await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const job = (await createResponse.json()) as Job;
+
+      // Job is in 'pending' status
+      const response = await fetch(`${baseUrl}/jobs/${job.id}/continue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'Test' }),
+      });
+
+      expect(response.status).toBe(400);
+      const error = await response.json();
+      expect(error.error).toContain('not in failed status');
+    });
+
+    it('returns 400 when job has no conversation_id', async () => {
+      const payload = createJobPayload();
+      const createResponse = await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const job = (await createResponse.json()) as Job;
+
+      // Set job to failed but without conversation_id
+      jobModule.updateJobStatus(job.id, 'failed', JSON.stringify({ error: 'Test error' }), undefined, null);
+
+      const response = await fetch(`${baseUrl}/jobs/${job.id}/continue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'Test' }),
+      });
+
+      expect(response.status).toBe(400);
+      const error = await response.json();
+      expect(error.error).toContain('no conversation_id');
+    });
+
+    it('returns 400 when job is timed out (should use /resume)', async () => {
+      const payload = createJobPayload();
+      const createResponse = await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const job = (await createResponse.json()) as Job;
+
+      // Set job to failed with timed_out flag
+      jobModule.updateJobStatus(
+        job.id,
+        'failed',
+        JSON.stringify({ codex: { timed_out: true } }),
+        undefined,
+        'conv-timeout'
+      );
+
+      const response = await fetch(`${baseUrl}/jobs/${job.id}/continue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'Test' }),
+      });
+
+      expect(response.status).toBe(400);
+      const error = await response.json();
+      expect(error.error).toContain('timed out');
+      expect(error.error).toContain('/resume');
+    });
+
+    it('returns 400 when prompt is empty', async () => {
+      const payload = createJobPayload();
+      const createResponse = await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const job = (await createResponse.json()) as Job;
+
+      jobModule.updateJobStatus(job.id, 'failed', JSON.stringify({}), undefined, 'conv-123');
+
+      const response = await fetch(`${baseUrl}/jobs/${job.id}/continue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: '' }),
+      });
+
+      expect(response.status).toBe(400);
+    });
+
+    it('trims whitespace from prompt using schema validation', async () => {
+      const payload = createJobPayload();
+      const createResponse = await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const job = (await createResponse.json()) as Job;
+
+      jobModule.updateJobStatus(job.id, 'failed', JSON.stringify({}), undefined, 'conv-123');
+
+      const response = await fetch(`${baseUrl}/jobs/${job.id}/continue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: '  Fix the bug  ' }),
+      });
+
+      expect(response.status).toBe(200);
+      const updatedJob = jobModule.getJob(job.id);
+      const summary = JSON.parse(updatedJob?.result_summary || '{}');
+      expect(summary.continue_prompt).toBe('Fix the bug');
+    });
+
+    it('updates job status from failed to pending', async () => {
+      const payload = createJobPayload();
+      const createResponse = await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const job = (await createResponse.json()) as Job;
+
+      jobModule.updateJobStatus(job.id, 'failed', JSON.stringify({}), undefined, 'conv-123');
+      expect(jobModule.getJob(job.id)?.status).toBe('failed');
+
+      await fetch(`${baseUrl}/jobs/${job.id}/continue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'Continue' }),
+      });
+
+      expect(jobModule.getJob(job.id)?.status).toBe('pending');
+    });
+
+    it('preserves existing result_summary while adding continue fields', async () => {
+      const payload = createJobPayload();
+      const createResponse = await fetch(`${baseUrl}/jobs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const job = (await createResponse.json()) as Job;
+
+      const existingSummary = {
+        error: 'Previous error',
+        codex: { success: false },
+        continuations: [{ prompt: 'First try', response: 'Failed' }],
+      };
+      jobModule.updateJobStatus(job.id, 'failed', JSON.stringify(existingSummary), undefined, 'conv-123');
+
+      await fetch(`${baseUrl}/jobs/${job.id}/continue`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'Second try' }),
+      });
+
+      const updatedJob = jobModule.getJob(job.id);
+      const summary = JSON.parse(updatedJob?.result_summary || '{}');
+      expect(summary.error).toBe('Previous error');
+      expect(summary.codex).toEqual({ success: false });
+      expect(summary.continuations).toEqual([{ prompt: 'First try', response: 'Failed' }]);
+      expect(summary.continue_prompt).toBe('Second try');
+      expect(summary.continue_requested_at).toBeDefined();
+    });
+  });
 });

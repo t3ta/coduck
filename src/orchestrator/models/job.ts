@@ -563,3 +563,32 @@ export const resumeJob = (id: string): void => {
     throw new Error(`Job ${id} not found`);
   }
 };
+
+/**
+ * Mark a failed job for continuation by setting it back to pending,
+ * clearing the resume flag, and persisting the updated result_summary.
+ */
+export const requestJobContinuation = (id: string, result_summary: unknown): Job => {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const serializedSummary = serializeResultSummary(result_summary);
+  const stmt = db.prepare(`
+    UPDATE jobs
+    SET status = 'pending',
+        resume_requested = 0,
+        result_summary = ?,
+        updated_at = ?
+    WHERE id = ?
+      AND status = 'failed'
+  `);
+  const result = stmt.run(serializedSummary, now, id);
+  if (result.changes === 0) {
+    throw new Error(`Job ${id} not found or not in failed status`);
+  }
+
+  const updated = getJob(id);
+  if (!updated) {
+    throw new Error(`Job ${id} not found after requesting continuation`);
+  }
+  return updated;
+};

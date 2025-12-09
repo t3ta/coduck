@@ -63,6 +63,8 @@ export interface ResultSummary extends Record<string, unknown> {
     at?: string;
   }>;
   last_continuation?: Record<string, unknown>;
+  continue_prompt?: string;
+  continue_requested_at?: string;
 }
 
 export type WorktreeState = 'orphaned' | 'in_use' | 'protected' | 'locked' | 'unmanaged';
