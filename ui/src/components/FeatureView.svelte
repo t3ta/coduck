@@ -97,6 +97,7 @@
   }
 
   function handleJobKeyDown(event: KeyboardEvent, job: Job) {
+    if (event.target !== event.currentTarget) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       onSelectJob?.(job);
