@@ -7,6 +7,7 @@ import { claimJob, createJob, deleteJob, deleteJobs, getJob, listJobs, updateJob
 import { removeWorktree } from '../../worker/worktree.js';
 import { orchestratorEvents } from '../events.js';
 import { getDb } from '../db.js';
+import { parseResultSummary } from '../../shared/result-summary-utils.js';
 
 const jobStatusEnum = z.enum(['pending', 'running', 'awaiting_input', 'done', 'failed', 'cancelled']);
 
@@ -67,7 +68,7 @@ const cleanupJobsSchema = z.object({
 });
 
 const continueJobSchema = z.object({
-  prompt: z.string().min(1),
+  prompt: z.string().trim().min(1),
 });
 
 type LogEntry = { stream: 'stdout' | 'stderr'; text: string; timestamp?: string };
@@ -132,26 +133,7 @@ const serializeJsonText = (value: unknown): string | null => {
   return typeof value === 'string' ? value : JSON.stringify(value);
 };
 
-const parseResultSummary = (value: unknown): Record<string, unknown> => {
-  if (!value) return {};
 
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      if (parsed && typeof parsed === 'object') {
-        return { ...(parsed as Record<string, unknown>) };
-      }
-    } catch {
-      return { previous_summary: value };
-    }
-  }
-
-  if (typeof value === 'object') {
-    return { ...(value as Record<string, unknown>) };
-  }
-
-  return {};
-};
 
 const router = Router();
 
@@ -547,7 +529,7 @@ router.post('/:id/continue', (req, res, next) => {
       return res.status(400).json({ error: 'Job timed out; use /jobs/:id/resume instead' });
     }
 
-    const prompt = body.prompt.trim();
+    const prompt = body.prompt;
     const requestedAt = new Date().toISOString();
     const updatedSummary = sanitizeResultSummaryValue({
       ...summary,
