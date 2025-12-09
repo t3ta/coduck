@@ -3,7 +3,7 @@ import { appConfig } from '../../src/shared/config.js';
 
 describe('appConfig', () => {
   it('has default values', () => {
-    // デフォルト値または環境変数から設定された値を確認
+    // Verify default values or values set from environment variables
     expect(typeof appConfig.worktreeBaseDir).toBe('string');
     expect(typeof appConfig.codexCliPath).toBe('string');
     expect(typeof appConfig.gitPath).toBe('string');
@@ -15,18 +15,18 @@ describe('appConfig', () => {
   });
 
   it('numeric settings are within valid range', () => {
-    // ポート番号は1-65535の範囲
+    // Port number range is 1-65535
     expect(appConfig.orchestratorPort).toBeTruthy();
     expect(appConfig.orchestratorPort > 0).toBe(true);
     expect(appConfig.orchestratorPort <= 65535).toBe(true);
 
-    // ポーリング間隔は正の数
+    // Polling interval should be positive
     expect(appConfig.workerPollIntervalMs > 0).toBe(true);
 
-    // 並行実行数は正の数
+    // Concurrency should be positive
     expect(appConfig.workerConcurrency > 0).toBe(true);
 
-    // タイムアウトは正の数
+    // Timeout should be positive
     expect(appConfig.codexMcpTimeoutMs > 0).toBe(true);
   });
 
@@ -45,7 +45,7 @@ describe('appConfig', () => {
   });
 
   it('optional settings have correct types', () => {
-    // codexReasoningSummary と codexReasoningFormat はオプション
+    // codexReasoningSummary and codexReasoningFormat are optional
     if (appConfig.codexReasoningSummary !== undefined) {
       expect(typeof appConfig.codexReasoningSummary).toBe('string');
     }
