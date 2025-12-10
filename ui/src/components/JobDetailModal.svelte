@@ -97,14 +97,6 @@
     }
   }
 
-  function handleBackdropKeydown(event: KeyboardEvent) {
-    if (event.target !== event.currentTarget) return;
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      onClose();
-    }
-  }
-
   function formatDate(dateString: string): string {
     const date = new Date(dateString);
     return date.toLocaleString('ja-JP', {
@@ -135,14 +127,15 @@
 {#if job}
   <div
     class="modal-backdrop"
-    role="dialog"
-    aria-modal="true"
-    aria-label="ジョブ詳細"
-    tabindex="-1"
     onclick={handleBackdropClick}
-    onkeydown={handleBackdropKeydown}
   >
-    <div class="modal">
+    <div
+      class="modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="ジョブ詳細"
+      tabindex="-1"
+    >
       <div class="modal-header">
         <div class="header-top">
           <h2>ジョブ詳細</h2>
