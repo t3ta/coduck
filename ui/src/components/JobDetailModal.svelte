@@ -129,7 +129,13 @@
     class="modal-backdrop"
     onclick={handleBackdropClick}
   >
-    <div class="modal">
+    <div
+      class="modal"
+      role="dialog"
+      aria-modal="true"
+      aria-label="ジョブ詳細"
+      tabindex="-1"
+    >
       <div class="modal-header">
         <div class="header-top">
           <h2>ジョブ詳細</h2>
@@ -485,16 +491,6 @@
     overflow-x: auto;
     font-size: 0.875rem;
     line-height: 1.5;
-  }
-
-  ul {
-    margin: 0;
-    padding-left: 1.5rem;
-  }
-
-  ul li {
-    line-height: 1.6;
-    margin-bottom: 0.25rem;
   }
 
   .continue-description {
