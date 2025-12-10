@@ -134,6 +134,7 @@
       role="dialog"
       aria-modal="true"
       aria-label="ジョブ詳細"
+      tabindex="-1"
     >
       <div class="modal-header">
         <div class="header-top">
