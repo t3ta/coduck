@@ -9,6 +9,78 @@ import { orchestratorEvents } from '../events.js';
 import { getDb } from '../db.js';
 import { parseResultSummary } from '../../shared/result-summary-utils.js';
 
+/**
+ * Validates repo_url to prevent SSRF attacks.
+ * Only allows:
+ * - Absolute local paths (starting with /)
+ * - Git URLs from allowed hosts (github.com, gitlab.com)
+ * 
+ * You can customize ALLOWED_GIT_HOSTS via environment variable:
+ * ALLOWED_GIT_HOSTS=github.com,gitlab.com,example.com
+ */
+function validateRepoUrl(repoUrl: string): { valid: boolean; error?: string } {
+  // Allow absolute local paths
+  if (path.isAbsolute(repoUrl)) {
+    return { valid: true };
+  }
+
+  // Parse Git URL
+  try {
+    // Handle git@host:path format (SSH)
+    const sshMatch = repoUrl.match(/^git@([^:]+):/);
+    if (sshMatch) {
+      const host = sshMatch[1];
+      if (isAllowedHost(host)) {
+        return { valid: true };
+      }
+      return { 
+        valid: false, 
+        error: `Git host '${host}' is not allowed. Allowed hosts: ${getAllowedHosts().join(', ')}` 
+      };
+    }
+
+    // Handle http(s):// format
+    const url = new URL(repoUrl);
+    const host = url.hostname;
+    
+    // Only allow git, http, and https protocols
+    if (!['git:', 'http:', 'https:'].includes(url.protocol)) {
+      return { 
+        valid: false, 
+        error: `Protocol '${url.protocol}' is not allowed. Only git://, http://, and https:// are permitted.` 
+      };
+    }
+
+    if (isAllowedHost(host)) {
+      return { valid: true };
+    }
+
+    return { 
+      valid: false, 
+      error: `Git host '${host}' is not allowed. Allowed hosts: ${getAllowedHosts().join(', ')}` 
+    };
+  } catch (err) {
+    return { 
+      valid: false, 
+      error: `Invalid repo_url format. Must be an absolute path or a valid Git URL.` 
+    };
+  }
+}
+
+function getAllowedHosts(): string[] {
+  const envHosts = process.env.ALLOWED_GIT_HOSTS;
+  if (envHosts) {
+    return envHosts.split(',').map(h => h.trim()).filter(h => h.length > 0);
+  }
+  // Default to common Git hosting services
+  return ['github.com', 'gitlab.com'];
+}
+
+function isAllowedHost(host: string): boolean {
+  const allowedHosts = getAllowedHosts();
+  return allowedHosts.includes(host);
+}
+
 const jobStatusEnum = z.enum(['pending', 'running', 'awaiting_input', 'done', 'failed', 'cancelled']);
 
 const specJsonSchema: z.ZodType<SpecJson> = z.object({
@@ -141,6 +213,14 @@ router.post('/', (req, res, next) => {
   try {
     const payload = createJobSchema.parse(req.body);
     const trimmedWorktreePath = payload.worktree_path?.trim();
+
+    // Validate repo_url to prevent SSRF attacks
+    const repoValidation = validateRepoUrl(payload.repo_url);
+    if (!repoValidation.valid) {
+      return res.status(400).json({
+        error: repoValidation.error || 'Invalid repo_url',
+      });
+    }
 
     // Validate and auto-configure no-worktree mode
     if (payload.use_worktree === false) {
