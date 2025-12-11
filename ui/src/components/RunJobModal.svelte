@@ -28,7 +28,7 @@
         repo_url: repoUrl,
         base_ref: baseRef,
         branch_name: branchName,
-        worktree_path: useWorktree ? `worktree-${Date.now()}` : '',
+        worktree_path: useWorktree ? `worktree-${Date.now()}-${Math.random().toString(36).substring(2, 8)}` : '',
         worker_type: 'codex', // Default per plan
         spec_json: { prompt },
         push_mode: 'always',

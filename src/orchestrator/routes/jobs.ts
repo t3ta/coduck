@@ -27,9 +27,12 @@ function validateRepoUrl(repoUrl: string): { valid: boolean; error?: string } {
   // Parse Git URL
   try {
     // Handle git@host:path format (SSH)
-    const sshMatch = repoUrl.match(/^git@([^:]+):/);
+    const sshMatch = repoUrl.match(/^git@([a-zA-Z0-9.-]+):/);
     if (sshMatch) {
       const host = sshMatch[1];
+      if (!isValidHostname(host)) {
+        return { valid: false, error: `Invalid hostname format: ${host}` };
+      }
       if (isAllowedHost(host)) {
         return { valid: true };
       }
@@ -51,6 +54,10 @@ function validateRepoUrl(repoUrl: string): { valid: boolean; error?: string } {
       };
     }
 
+    if (!isValidHostname(host)) {
+      return { valid: false, error: `Invalid hostname format: ${host}` };
+    }
+
     if (isAllowedHost(host)) {
       return { valid: true };
     }
@@ -67,10 +74,23 @@ function validateRepoUrl(repoUrl: string): { valid: boolean; error?: string } {
   }
 }
 
+function isValidHostname(hostname: string): boolean {
+  // Basic hostname validation: alphanumeric, dots, hyphens, not starting/ending with hyphen
+  const hostnameRegex = /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+  return hostnameRegex.test(hostname);
+}
+
 function getAllowedHosts(): string[] {
   const envHosts = process.env.ALLOWED_GIT_HOSTS;
   if (envHosts) {
-    return envHosts.split(',').map(h => h.trim()).filter(h => h.length > 0);
+    const hosts = envHosts.split(',').map(h => h.trim()).filter(h => h.length > 0);
+    // Validate all configured hosts
+    for (const host of hosts) {
+      if (!isValidHostname(host)) {
+        console.warn(`Invalid hostname in ALLOWED_GIT_HOSTS: ${host} - ignoring`);
+      }
+    }
+    return hosts.filter(h => isValidHostname(h));
   }
   // Default to common Git hosting services
   return ['github.com', 'gitlab.com'];
