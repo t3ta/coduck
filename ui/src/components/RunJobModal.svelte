@@ -53,8 +53,11 @@
 
 <svelte:window onkeydown={handleEscape} />
 
-<div class="modal-backdrop" onclick={onClose}>
-  <div class="modal-content" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true">
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<div class="modal-backdrop" onclick={onClose} role="button" tabindex="0" onkeydown={(e) => e.key === 'Escape' && onClose()}>
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="modal-content" onclick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
     <header>
       <h2>Run Agent</h2>
       <button class="close-btn" onclick={onClose}>&times;</button>
