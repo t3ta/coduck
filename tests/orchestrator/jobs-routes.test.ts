@@ -9,7 +9,7 @@ const jobModulePromise = import('../../src/orchestrator/models/job.ts');
 const serverModulePromise = import('../../src/orchestrator/server.ts');
 
 const createJobPayload = (overrides: Record<string, unknown> = {}) => ({
-  repo_url: 'https://example.com/repo.git',
+  repo_url: 'https://github.com/example/repo.git',
   base_ref: 'origin/main',
   branch_name: 'feature/http-test',
   worktree_path: '/tmp/worktree-http',

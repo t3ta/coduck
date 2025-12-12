@@ -9,6 +9,7 @@ import type {
 
 const API_BASE = '';
 
+
 export async function listJobs(params?: {
   status?: string;
   worker_type?: string;
@@ -85,5 +86,27 @@ export async function deleteWorktree(encodedPath: string): Promise<void> {
 export async function cleanupWorktrees(): Promise<WorktreeCleanupResponse> {
   const res = await fetch(`${API_BASE}/worktrees/cleanup`, { method: 'DELETE' });
   if (!res.ok) throw new Error(`Failed to cleanup worktrees: ${res.statusText}`);
+  return res.json();
+}
+
+export async function createJob(payload: {
+  repo_url: string;
+  base_ref: string;
+  branch_name: string;
+  worktree_path: string;
+  worker_type: string;
+  spec_json: { prompt: string };
+  push_mode: 'always' | 'never';
+  use_worktree?: boolean;
+}): Promise<Job> {
+  const res = await fetch(`${API_BASE}/jobs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(`Failed to create job: ${res.statusText} - ${errorText}`);
+  }
   return res.json();
 }

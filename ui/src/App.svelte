@@ -4,6 +4,7 @@
   import FeatureView from './components/FeatureView.svelte';
   import WorktreeManager from './components/WorktreeManager.svelte';
   import JobDetailModal from './components/JobDetailModal.svelte';
+  import RunJobModal from './components/RunJobModal.svelte';
   import { sseClient } from './lib/sse';
   import { notificationManager } from './lib/notifications';
   import type { Job } from './lib/types';
@@ -13,6 +14,7 @@
   let activeTab = $state<Tab>('jobs');
   let selectedJob = $state<Job | null>(null);
   let showNotificationPrompt = $state(false);
+  let showRunJobModal = $state(false);
   let previousJobStatuses = new Map<string, string>();
 
   function handleSelectJob(job: Job) {
@@ -21,6 +23,19 @@
 
   function closeModal() {
     selectedJob = null;
+  }
+
+  function openRunJobModal() {
+    showRunJobModal = true;
+  }
+
+  function closeRunJobModal() {
+    showRunJobModal = false;
+  }
+
+  function handleJobCreated() {
+    // Optionally refresh lists or switch tab, but SSE should handle updates
+    activeTab = 'jobs';
   }
 
   async function enableNotifications() {
@@ -92,8 +107,15 @@
 
 <main>
   <header>
-    <h1>Coduck Orchestrator</h1>
-    <p class="subtitle">Job Management & Monitoring</p>
+    <div class="header-content">
+      <div>
+        <h1>Coduck Orchestrator</h1>
+        <p class="subtitle">Job Management & Monitoring</p>
+      </div>
+      <button class="btn-run" onclick={openRunJobModal}>
+        <span class="icon">▶</span> Run Agent
+      </button>
+    </div>
   </header>
 
   {#if showNotificationPrompt}
@@ -144,6 +166,10 @@
   </div>
 
   <JobDetailModal job={selectedJob} onClose={closeModal} />
+
+  {#if showRunJobModal}
+    <RunJobModal onClose={closeRunJobModal} onSuccess={handleJobCreated} />
+  {/if}
 </main>
 
 <style>
@@ -167,6 +193,14 @@
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   }
 
+  .header-content {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
   h1 {
     margin: 0 0 0.5rem 0;
     font-size: 2rem;
@@ -177,6 +211,31 @@
     margin: 0;
     opacity: 0.9;
     font-size: 1rem;
+  }
+
+  .btn-run {
+    background: white;
+    color: #667eea;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 9999px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .btn-run:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 8px rgba(0, 0, 0, 0.15);
+  }
+
+  .btn-run .icon {
+    font-size: 0.8em;
   }
 
   .tabs {
